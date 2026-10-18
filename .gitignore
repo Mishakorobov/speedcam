@@ -35,4 +35,9 @@ keystore.properties
 *.db-wal
 *.db-shm
 *.sqlite
-data/
+# Anchored with a leading slash on purpose. An unanchored `data/` also matches `core/data/`,
+# which silently excluded the entire core:data module from version control - the first commit
+# of this repository shipped without it.
+#
+# This entry is only ever meant to exclude the generated database directory at the project root.
+/data/
