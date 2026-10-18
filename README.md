@@ -67,16 +67,13 @@ implementation, so the domain never depends on Room. `CameraStore` is the compos
 manual constructor injection rather than a DI framework, because the graph is five objects deep
 and completely static.
 
-**Tests.** 155 in total. 135 use synthetic fixtures; 20 exercise the seam against the real
-database, and the 11 in `RealDatabaseDetectionTest` drive the actual `DetectionEngine` over the
-rows `tools:import` really parsed out of OpenStreetMap. That suite is the one that catches the
-schema, the importer, the mapper and the engine drifting apart, which no fixture can. It
-skips itself when `data/russia.db` is absent, as it is on a fresh clone and in CI.
-
-**Known gap.** The app opens `speedcam.db`, which is created empty on first run. Nothing yet
-copies the `russia.db` built by `tools:import` onto the device, so a fresh install has no
-cameras in it. Wiring that up — shipping the database as an asset and installing it on first
-run — is packaging work that has not been done.
+**Tests.** 173 in total. 135 use synthetic fixtures; 38 exercise the seam against the real
+database — 11 drive the actual engine over rows really parsed out of OpenStreetMap, 15 cover
+installing that database onto a device, 9 cover the persistence-to-domain mapping, and 3 pin
+the build script and the installer to the same asset path. That suite is the one that catches
+the schema, the importer, the mapper, the engine and the APK packaging drifting apart, which no
+fixture can. Tests that need the database skip themselves when it is absent, as it is on a
+fresh clone and in CI.
 
 ## Building
 
@@ -147,6 +144,29 @@ to this project's own folders:
 
 Neither the extracts nor the database are committed; `.gitignore` excludes both. A fresh clone
 runs `tools\import\update-osm.bat` once to populate them.
+
+### Getting the database onto the device
+
+`data\russia.db` is what `tools:import` produces, and it is not a source file in the repository.
+The build stages it into the APK as `assets/databases/speedcam.db` (921,600 bytes, compressing
+to ~505 KB), and `CameraDatabaseInstaller` writes it into app storage on first launch, before
+Room opens anything.
+
+This mirrors the original, which ships `assets/overview/map.dat` (3.46 MB) and copies it out on
+first run via `SystemHelper.l()`. Shipping a bootstrap map is what lets the app be useful the
+moment it is installed; the three orphaned strings in the original's `strings.xml` — "Download
+the main map" and friends — are the fossil of the era when that download was mandatory.
+
+Two deliberate departures from the original:
+
+| | Original | Here |
+| --- | --- | --- |
+| Verification | plain byte copy; the `IOException` is swallowed as `tttt Error restoring resources`, and the shipped asset is never checksum-checked | the staging file must carry a SQLite header before it is allowed to replace anything, and failure propagates |
+| Overwrite | re-copies unconditionally on a resource-version bump | an existing database is never clobbered — it holds the user's `override_` rows. Bundle upgrades go through Room migrations; refreshing from upstream is Stage 8 |
+
+If `data\russia.db` is absent when the app module builds, `stageCameraDatabase` warns loudly
+and ships without cameras rather than failing the build, because CI has no extracts. An APK
+built that way starts normally and never warns about anything, so watch for that warning.
 
 **One-off / manual paths:**
 

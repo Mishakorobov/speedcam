@@ -1,3 +1,12 @@
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.TaskAction
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -52,6 +61,76 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+}
+
+/**
+ * Stages the camera database built by `tools/import` into the APK's assets.
+ *
+ * Declared as a class in the build script rather than as a `doLast` closure. A closure
+ * defined in a Gradle Kotlin DSL script captures the script instance as soon as it touches a
+ * script-level `val`, and the configuration cache rejects those references outright. A task
+ * class has no such problem: its action is a method, and everything it needs arrives through
+ * properties.
+ *
+ * All inputs are wired in from outside, so the name `speedcam.db` lives here rather than in
+ * the copy configuration. That matches what `CameraDatabaseInstaller` looks for.
+ */
+abstract class StageCameraDatabaseTask : DefaultTask() {
+    @get:InputFile
+    @get:Optional
+    abstract val source: RegularFileProperty
+
+    @get:OutputFile
+    abstract val target: RegularFileProperty
+
+    @TaskAction
+    fun stage() {
+        val from: File = source.get().asFile
+        val to: File = target.get().asFile
+
+        if (!from.isFile) {
+            // Loudly, because the alternative failure is invisible: the app would install,
+            // open an empty database and never warn about anything.
+            logger.warn(
+                "WARNING: $from is missing, so no camera database will be bundled and the app " +
+                    "will start with zero cameras. Run tools\\import\\update-osm.bat to build it.",
+            )
+            Files.deleteIfExists(to.toPath())
+            return
+        }
+
+        Files.createDirectories(to.parentFile.toPath())
+        Files.copy(from.toPath(), to.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        logger.lifecycle("Staged ${to.name} (${Files.size(to.toPath())} bytes) into the APK")
+    }
+}
+
+val cameraDatabaseSource: File =
+    rootProject.layout.projectDirectory
+        .file("data/russia.db")
+        .asFile
+val cameraAssetsDir: File =
+    layout.buildDirectory
+        .dir("generated/cameraAssets")
+        .get()
+        .asFile
+val stagedCameraDatabase: File = File(cameraAssetsDir, "databases/speedcam.db")
+
+val stageCameraDatabase =
+    tasks.register<StageCameraDatabaseTask>("stageCameraDatabase") {
+        description = "Stages data/russia.db into the APK as an asset."
+        group = "build"
+
+        source.set(cameraDatabaseSource)
+        target.set(stagedCameraDatabase)
+    }
+
+android.sourceSets.getByName("main") {
+    assets.srcDir(cameraAssetsDir)
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(stageCameraDatabase)
 }
 
 dependencies {
