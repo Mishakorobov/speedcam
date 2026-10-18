@@ -22,14 +22,14 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 
 ## Status
 
-**Stage 2 of 9 — detection engine wired end to end against the imported database.**
+**Stage 3 of 9 — alert profiles: policy engine, presets and transport selection.**
 
 | Stage | | Status |
 | --- | --- | --- |
 | 0 | Project skeleton, CI, lint | **done** — `./gradlew build` green, debug + release APK |
 | 1 | Database schema + offline importer | **done** — verified end-to-end against live Overpass |
 | 2 | Detection engine | **done** — pure engine + 42 fixture tests, plus 20 tests driving the real engine over the real 11k-camera database |
-| 3 | Alert profiles and presets | model + 8 presets done; no UI |
+| 3 | Alert profiles and presets | **done** — policy engine, 8 presets, transport selection, 39 tests |
 | 4 | Foreground service and location pipeline | shell + `FixArbiter` done; no provider attached |
 | 5 | Sound, gager tone, speech, vibration | tone ladder + PCM synthesis done; no playback |
 | 6 | HUD, camera list, settings | placeholder |
@@ -62,18 +62,39 @@ SpeedCamApp ──► CameraStore ──► SpeedCamDatabase ──► CameraDao
                                      (CameraQuery)      (pure)
 ```
 
+```
+DetectionEngine.detect()          -> List<Hazard>     which cameras matter
+        |
+AlertPolicy.evaluate()            -> AlertDecision?  what to say about one
+        |
+media / notification layer                         how to produce it
+```
+
 `core:detect` declares the `CameraQuery` contract it needs and `core:data` supplies an
 implementation, so the domain never depends on Room. `CameraStore` is the composition root —
 manual constructor injection rather than a DI framework, because the graph is five objects deep
 and completely static.
 
-**Tests.** 173 in total. 135 use synthetic fixtures; 38 exercise the seam against the real
-database — 11 drive the actual engine over rows really parsed out of OpenStreetMap, 15 cover
-installing that database onto a device, 9 cover the persistence-to-domain mapping, and 3 pin
-the build script and the installer to the same asset path. That suite is the one that catches
-the schema, the importer, the mapper, the engine and the APK packaging drifting apart, which no
-fixture can. Tests that need the database skip themselves when it is absent, as it is on a
-fresh clone and in CI.
+### What is recovered, and what is not
+
+Three things about the original are only partly knowable, and the code says so where it
+matters rather than papering over the gap:
+
+| | Status |
+| --- | --- |
+| The eight preset *names* | verbatim from `quick_setting_title_0..7` |
+| The eight presets' *field assignments* | **not recovered.** Each is applied by `nativeApplyQuickSetting(int, boolean)`, a single native call. The one-line subtitle per preset is the only description that survives, and `QuickSettingTest` asserts the assignments against those sentences. The numeric choices are informed guesses. |
+| `beep_excess_values` semantics | array name, the Russian `превышение`, and the sibling `op_warn_excess` all say the threshold is an **excess over the posted limit**, not an absolute speed. The comparison itself is native. |
+| Day/night determination | `warnTime` is stored as 0/1/2 and evaluated inside the native library. The decompile contains no sunrise or sunset calculation, so `AlertContext.isNight` is supplied by the caller rather than guessed at here. |
+| What Car/Truck/Moto change | applied natively, not recoverable. Only the selection rule is implemented. |
+
+**Tests.** 212 in total. 135 use synthetic fixtures; the rest exercise the seam against the
+real database — 11 drive the actual engine over rows really parsed out of OpenStreetMap, 15
+cover installing that database onto a device, 9 cover the persistence-to-domain mapping, and 3
+pin the build script and the installer to the same asset path. 39 more cover the alert policy
+and presets, including an exhaustive sweep of all 32 enable/disable combinations of the five
+channel switches. Tests that need the database skip themselves when it is absent, as it is on
+a fresh clone and in CI.
 
 ## Building
 

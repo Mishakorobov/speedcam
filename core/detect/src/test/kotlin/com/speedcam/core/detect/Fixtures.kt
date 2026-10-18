@@ -52,6 +52,26 @@ object Fixtures {
         dirCount = dirCount,
     )
 
+    /**
+     * A hazard already inside the detection radius, for policy tests that care about the
+     * decision rather than about how it was reached.
+     *
+     * [excessKmh] is built the same way DetectionEngine builds it, so a policy test that
+     * passes here is testing the real arithmetic and not a stand-in.
+     */
+    fun hazard(
+        id: Long = 1,
+        limitKmh: Int? = 60,
+        speedKmh: Double = 90.0,
+        metresNorth: Double = 400.0,
+    ) = Hazard(
+        camera = camera(id = id, metresNorth = metresNorth, limitKmh = limitKmh),
+        distanceM = metresNorth,
+        bearingDeg = 0.0,
+        relativeBearingDeg = 0.0,
+        excessKmh = limitKmh?.takeIf { it > 0 }?.let { speedKmh - it },
+    )
+
     private object Geo180 {
         fun normalize(x: Double): Double {
             val v = x % 360.0
