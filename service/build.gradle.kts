@@ -29,6 +29,10 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
 
+    // FusedLocationProviderClient is the primary location source (Plan.md 3.3); the service
+    // falls back to LocationManager when Play Services is absent.
+    implementation(libs.play.services.location)
+
     testImplementation(libs.junit5)
     testImplementation(libs.kotlin.test.junit)
     testRuntimeOnly(libs.junit5.platform.launcher)

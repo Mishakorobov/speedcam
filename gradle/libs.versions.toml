@@ -13,6 +13,7 @@ room = "2.6.1"
 coroutines = "1.9.0"
 datastore = "1.1.1"
 work = "2.10.0"
+playServices = "21.3.0"
 
 junit = "5.11.3"
 mockk = "1.13.13"
@@ -31,6 +32,12 @@ androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-ru
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+
+# --- Location ---
+# FusedLocationProviderClient arbitrates between the GPS and network providers upstream, which
+# the service relies on. Plan.md 3.3 names it as the primary source with LocationManager as the
+# fallback, so that a device without Play Services still works.
+play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "playServices" }
 
 # --- Compose ---
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }

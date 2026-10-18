@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
+    <!-- Resurrection: restart detection after a reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application>
 
         <!--
@@ -15,6 +18,20 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!--
+          Not exported: nothing outside the app should be able to schedule the alarm.
+          exported="true" is required for BOOT_COMPLETED to be delivered at all.
+        -->
+        <receiver
+            android:name=".ResurrectionReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="com.speedcam.service.action.RESCHEDULE" />
+            </intent-filter>
+        </receiver>
 
     </application>
 

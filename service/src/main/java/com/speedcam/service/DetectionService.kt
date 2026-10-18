@@ -1,5 +1,7 @@
 package com.speedcam.service
 
+import android.app.Activity
+import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,31 +9,56 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import com.speedcam.core.data.CameraStore
+import com.speedcam.core.detect.AlertContext
+import com.speedcam.core.detect.AlertDecision
+import com.speedcam.core.detect.Fix
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
 
 /**
- * Sticky foreground service that owns the detection pipeline.
+ * The foreground service that owns the location pipeline.
  *
- * Stage 0 delivers the shell and the notification channel only. The location pipeline,
- * fix arbitration and alert dispatch are Stage 4; see Plan.md §8.
+ * Stage 0 delivered the shell and the notification channel; this attaches the provider, runs
+ * the chain from fix to alert, and applies the watchdogs from Plan.md §8.1.
  *
- * Uses an explicit [CoroutineScope] rather than `LifecycleService`: this service outlives any
- * activity and is torn down by the system rather than by a lifecycle transition, so the
- * lifecycle-owner semantics of `LifecycleService` buy nothing here and would add a
- * dependency. The scope is cancelled in [onDestroy], which is the only teardown that matters.
+ * Two lifecycle decisions are deliberate:
+ *
+ *  - `startForeground()` is called first and unconditionally in [onStartCommand], ahead of the
+ *    permission check and of opening the database. Android requires it within five seconds of
+ *    `startForegroundService()`; everything slow happens afterwards. A service that misses that
+ *    window is killed with `ForegroundServiceDidNotStartInTimeException`, which on Android 12
+ *    and later also counts as a foreground-start restriction violation against the whole app.
+ *  - `START_STICKY`, so a low-memory kill is recovered from. [Resurrection] covers the two
+ *    cases the system will not restart on its own: a reboot and a process reclaimed outright.
  */
 class DetectionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    private val gpsWatchdog = GpsLostWatchdog()
+    private val abuseWatchdog = BackgroundAbuseWatchdog()
+    private val profiles by lazy { ProfileStore(this) }
+
+    private var lastAcceptedFix: Fix? = null
+    private var store: CameraStore? = null
+    private var visibility: AppVisibility? = null
+    private var collecting = false
+
+    /** What the notification currently says. Only this class writes it. */
+    private var notificationState: String = ""
+
     override fun onCreate() {
         super.onCreate()
-        createChannel()
+        createNotificationChannel()
+        notificationState = getString(R.string.notification_text)
     }
 
     override fun onStartCommand(
@@ -39,27 +66,135 @@ class DetectionService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
-        promoteToForeground(buildNotification())
+        // First, and unconditionally, before anything that might block.
+        promoteToForeground(buildNotification(notificationState))
 
-        scope.launch {
-            // Stage 4: attach the location provider and start the detection loop here.
+        if (intent?.action == ACTION_STOP || !profiles.isEnabled) {
+            stopSelf()
+            return START_NOT_STICKY
         }
 
-        // START_STICKY: the service must survive a low-memory kill. A detection aid that
-        // silently stops is a safety regression, so the system is asked to restore it.
+        if (!hasLocationPermission(this)) {
+            // Nothing can be detected without location. Stopping is honest; carrying on would
+            // show an active-looking notification for an app that cannot possibly work.
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        Resurrection.schedule(this)
+        registerVisibilityWatch()
+        startCollecting()
+
         return START_STICKY
     }
 
     override fun onBind(intent: Intent): IBinder? = null
 
     override fun onDestroy() {
+        visibility?.unregister()
+        visibility = null
         scope.cancel()
+        store?.close()
+        store = null
         super.onDestroy()
     }
 
+    // ------------------------------------------------------------------- pipeline
+
+    private fun startCollecting() {
+        if (collecting) return
+        collecting = true
+
+        scope.launch {
+            val cameraStore = store ?: CameraStore.open(applicationContext).also { store = it }
+            val pipeline = DetectionPipeline(cameraStore.cameraQuery())
+            val source = locationSource(this@DetectionService)
+
+            gpsWatchdog.start(System.currentTimeMillis())
+
+            source.fixes().collect { fix -> onFix(fix, pipeline) }
+        }
+
+        // The GPS watchdog runs on its own tick, because a total loss of signal means no fixes
+        // arrive at all and there would be nothing to notice it on.
+        scope.launch {
+            while (true) {
+                delay(WATCHDOG_TICK_MS)
+                refreshNotification()
+            }
+        }
+    }
+
+    private fun onFix(
+        fix: Fix,
+        pipeline: DetectionPipeline,
+    ) {
+        gpsWatchdog.onFix(fix.timestampMillis)
+
+        val profile = profiles.profile()
+        val result =
+            pipeline.process(
+                fix = fix,
+                profile = profile,
+                previous = lastAcceptedFix,
+                context = AlertContext(isNight = isNight(LocalDateTime.now())),
+            )
+        // Updated after processing, so the next fix is compared against this one rather than
+        // against itself.
+        lastAcceptedFix = result.fix
+
+        result.decisions.forEach(::dispatch)
+
+        if (abuseWatchdog.onMoved(System.currentTimeMillis(), fix.position)) {
+            // Backgrounded and being driven: the rule from Plan.md §8.1.
+            stopSelf()
+            return
+        }
+
+        refreshNotification()
+    }
+
+    /**
+     * Records that a decision was made.
+     *
+     * Stage 5 owns playback; until it exists this surfaces the distance and limit in the
+     * ongoing notification, which is enough to verify a real drive end to end.
+     */
+    private fun dispatch(decision: AlertDecision) {
+        notificationState =
+            getString(
+                R.string.notification_alert,
+                decision.distanceM.toInt(),
+                decision.limitKmh ?: 0,
+            )
+    }
+
+    private fun refreshNotification() {
+        when (gpsWatchdog.evaluate(System.currentTimeMillis())) {
+            GpsStatus.LOST -> notificationState = getString(R.string.notification_gps_lost)
+            GpsStatus.RECOVERED -> notificationState = getString(R.string.notification_gps_recovered)
+            GpsStatus.HEALTHY -> Unit
+        }
+        getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildNotification(notificationState))
+    }
+
+    private fun registerVisibilityWatch() {
+        if (visibility != null) return
+        visibility =
+            AppVisibility(application) { backgrounded ->
+                if (backgrounded) {
+                    abuseWatchdog.onBackgrounded(System.currentTimeMillis(), lastAcceptedFix?.position)
+                } else {
+                    abuseWatchdog.onForegrounded()
+                }
+            }
+    }
+
+    // ------------------------------------------------------------------ lifecycle
+
     private fun promoteToForeground(notification: Notification) {
-        // On API 34+ the type must be passed explicitly; on older versions the manifest
-        // declaration alone is honoured and this overload does not exist.
+        // On API 34+ the type must be passed explicitly; earlier versions honour the manifest
+        // declaration alone and this overload does not exist.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } else {
@@ -67,12 +202,14 @@ class DetectionService : Service() {
         }
     }
 
-    private fun createChannel() {
+    private fun createNotificationChannel() {
         val manager = getSystemService(NotificationManager::class.java) ?: return
         val channel =
             NotificationChannel(
                 CHANNEL_ID,
                 getString(R.string.channel_detection_name),
+                // Low importance, and therefore silent: the ongoing notification must never
+                // compete with the warnings the app exists to produce.
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
                 description = getString(R.string.channel_detection_description)
@@ -81,11 +218,11 @@ class DetectionService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification =
+    private fun buildNotification(text: String): Notification =
         NotificationCompat
             .Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
-            .setContentText(getString(R.string.notification_text))
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -98,5 +235,75 @@ class DetectionService : Service() {
 
         const val ACTION_START = "com.speedcam.service.action.START"
         const val ACTION_STOP = "com.speedcam.service.action.STOP"
+
+        private const val WATCHDOG_TICK_MS = 1_000L
+
+        /** Day begins at 07:00 by this rule. See [isNight]. */
+        private const val DAY_START_HOUR = 7
+
+        /** Night begins at 21:00 by this rule. See [isNight]. */
+        private const val NIGHT_START_HOUR = 21
+
+        /**
+         * Night, for the day-only and night-only profiles.
+         *
+         * Fixed hours rather than a computed twilight, and deliberately so. The original stores
+         * `warnTime` as 0/1/2 and evaluates it inside `libVestigoEngines.so`; its decompile
+         * contains no sunrise or sunset calculation anywhere, so there is nothing here to port.
+         * Inventing a civil-twilight implementation would be a guess dressed as a recovery, and
+         * it would be wrong for most of the year without looking wrong at all.
+         */
+        fun isNight(now: LocalDateTime): Boolean = now.hour < DAY_START_HOUR || now.hour >= NIGHT_START_HOUR
     }
+}
+
+/**
+ * Reports whether the app has any visible activity.
+ *
+ * A `Service` is told nothing about this, but the background-abuse rule needs it: the rule is
+ * about the app having no visible UI while its device is moving. Counting started activities
+ * is the standard way to get that answer without pulling in `androidx.lifecycle`'s process
+ * lifecycle.
+ */
+internal class AppVisibility(
+    private val application: Application,
+    private val onChanged: (backgrounded: Boolean) -> Unit,
+) : Application.ActivityLifecycleCallbacks {
+    private var started = 0
+
+    init {
+        application.registerActivityLifecycleCallbacks(this)
+    }
+
+    fun unregister() {
+        // The application outlives every service, so leaving this registered would keep the
+        // service reachable for the life of the process.
+        application.unregisterActivityLifecycleCallbacks(this)
+    }
+
+    override fun onActivityStarted(activity: Activity) {
+        started++
+        if (started == 1) onChanged(false)
+    }
+
+    override fun onActivityStopped(activity: Activity) {
+        started = (started - 1).coerceAtLeast(0)
+        if (started == 0) onChanged(true)
+    }
+
+    override fun onActivityCreated(
+        activity: Activity,
+        savedInstanceState: Bundle?,
+    ) = Unit
+
+    override fun onActivityResumed(activity: Activity) = Unit
+
+    override fun onActivityPaused(activity: Activity) = Unit
+
+    override fun onActivitySaveInstanceState(
+        activity: Activity,
+        outState: Bundle,
+    ) = Unit
+
+    override fun onActivityDestroyed(activity: Activity) = Unit
 }

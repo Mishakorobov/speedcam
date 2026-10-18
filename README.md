@@ -22,7 +22,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 
 ## Status
 
-**Stage 3 of 9 — alert profiles: policy engine, presets and transport selection.**
+**Stage 4 of 9 — foreground service, location pipeline and watchdogs.**
 
 | Stage | | Status |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 | 1 | Database schema + offline importer | **done** — verified end-to-end against live Overpass |
 | 2 | Detection engine | **done** — pure engine + 42 fixture tests, plus 20 tests driving the real engine over the real 11k-camera database |
 | 3 | Alert profiles and presets | **done** — policy engine, 8 presets, transport selection, 39 tests |
-| 4 | Foreground service and location pipeline | shell + `FixArbiter` done; no provider attached |
+| 4 | Foreground service and location pipeline | **done** — fused provider with fallback, watchdogs, resurrection; not yet run on hardware |
 | 5 | Sound, gager tone, speech, vibration | tone ladder + PCM synthesis done; no playback |
 | 6 | HUD, camera list, settings | placeholder |
 | 7 | Average-speed zones | import path ready; runtime computation pending |
@@ -87,6 +87,26 @@ matters rather than papering over the gap:
 | `beep_excess_values` semantics | array name, the Russian `превышение`, and the sibling `op_warn_excess` all say the threshold is an **excess over the posted limit**, not an absolute speed. The comparison itself is native. |
 | Day/night determination | `warnTime` is stored as 0/1/2 and evaluated inside the native library. The decompile contains no sunrise or sunset calculation, so `AlertContext.isNight` is supplied by the caller rather than guessed at here. |
 | What Car/Truck/Moto change | applied natively, not recoverable. Only the selection rule is implemented. |
+| Day/night hours | fixed 07:00–21:00. A guess, and labelled as one: the original's decompile has no twilight calculation to port. |
+
+### Running it
+
+The service is wired but nothing starts it yet — Stage 6 owns the UI. To exercise it on a
+device:
+
+```bash
+./gradlew :app:installDebug
+adb shell am start-foreground-service -n com.speedcam.app.debug/com.speedcam.service.DetectionService
+```
+
+The ongoing notification shows the distance and limit of the nearest hazard, so a drive can be
+verified end to end before Stage 5 adds audio. It also reports GPS loss and recovery.
+
+**Not yet verified on hardware.** Plan.md §8.1 accepts this stage only after the service
+survives two or more hours backgrounded on API 34 and API 36 and fires correctly on a real
+route. Neither has been done, because no device was available here. The pieces most likely to
+need attention on a real drive are the GPS-loss timeout under tree cover, and whether
+`AlarmManager` actually delivers while the device sleeps.
 
 **Tests.** 212 in total. 135 use synthetic fixtures; the rest exercise the seam against the
 real database — 11 drive the actual engine over rows really parsed out of OpenStreetMap, 15

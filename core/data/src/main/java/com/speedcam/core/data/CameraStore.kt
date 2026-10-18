@@ -1,6 +1,7 @@
 package com.speedcam.core.data
 
 import android.content.Context
+import com.speedcam.core.detect.CameraQuery
 import com.speedcam.core.detect.DetectionEngine
 
 /**
@@ -44,6 +45,15 @@ class CameraStore(
      * exist. Callers that detect on every location update may cache the result.
      */
     fun detector(): DetectionEngine = DetectionEngine(query)
+
+    /**
+     * The underlying query, for callers that run their own detection pipeline.
+     *
+     * [com.speedcam.service.DetectionPipeline] arbitrates fixes before detecting, so it needs
+     * the query rather than a detector that would re-arbitrate nothing and lose access to the
+     * accepted fix.
+     */
+    fun cameraQuery(): CameraQuery = query
 
     override fun close() {
         database.close()
