@@ -6,6 +6,10 @@ captures/
 .externalNativeBuild/
 .cxx/
 
+# Kotlin compiler session markers. These are regenerated on every build and carry build-
+# specific paths and timestamps; one was committed by accident before this rule existed.
+.kotlin/
+
 # IDE
 .idea/
 *.iml
