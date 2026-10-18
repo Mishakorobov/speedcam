@@ -100,8 +100,34 @@ abstract class StageCameraDatabaseTask : DefaultTask() {
         }
 
         Files.createDirectories(to.parentFile.toPath())
-        Files.copy(from.toPath(), to.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        copyOf(from, to)
         logger.lifecycle("Staged ${to.name} (${Files.size(to.toPath())} bytes) into the APK")
+    }
+
+    /**
+     * Copies the database, refusing to do so if rows are still sitting in a write-ahead log.
+     *
+     * The importer leaves the database in WAL mode, where recent writes live in a `-wal`
+     * sidecar until they are checkpointed. Copying only the main file would therefore produce
+     * a structurally valid database that is silently missing its newest cameras - and a valid
+     * header is all the installer's check looks at, so nothing downstream would catch it. A
+     * zero-length `-wal` is normal and means everything has been folded in.
+     */
+    private fun copyOf(
+        from: File,
+        to: File,
+    ) {
+        val wal = File(from.parentFile, from.name + "-wal")
+        if (wal.isFile && wal.length() > 0L) {
+            throw GradleException(
+                "$wal is not empty, so ${from.name} is missing rows that exist only in the " +
+                    "write-ahead log. Bundling it now would ship a database that looks valid " +
+                    "but silently lacks its newest cameras. Checkpoint it first: run " +
+                    "tools\\import\\update-osm.bat --verify, or delete the -wal file once you " +
+                    "have confirmed the database is complete.",
+            )
+        }
+        Files.copy(from.toPath(), to.toPath(), StandardCopyOption.REPLACE_EXISTING)
     }
 }
 
