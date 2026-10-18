@@ -22,7 +22,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 
 ## Status
 
-**Stage 4 of 9 — foreground service, location pipeline and watchdogs.**
+**Stage 4 of 9 — foreground service, verified end to end on a real device.**
 
 | Stage | | Status |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 | 1 | Database schema + offline importer | **done** — verified end-to-end against live Overpass |
 | 2 | Detection engine | **done** — pure engine + 42 fixture tests, plus 20 tests driving the real engine over the real 11k-camera database |
 | 3 | Alert profiles and presets | **done** — policy engine, 8 presets, transport selection, 39 tests |
-| 4 | Foreground service and location pipeline | **done** — fused provider with fallback, watchdogs, resurrection; not yet run on hardware |
+| 4 | Foreground service and location pipeline | **done and verified on API 36** — fused provider with fallback, watchdogs, resurrection |
 | 5 | Sound, gager tone, speech, vibration | tone ladder + PCM synthesis done; no playback |
 | 6 | HUD, camera list, settings | placeholder |
 | 7 | Average-speed zones | import path ready; runtime computation pending |
@@ -91,22 +91,48 @@ matters rather than papering over the gap:
 
 ### Running it
 
-The service is wired but nothing starts it yet — Stage 6 owns the UI. To exercise it on a
-device:
+The service is wired and starts itself once location permission has been granted.
 
 ```bash
 ./gradlew :app:installDebug
-adb shell am start-foreground-service -n com.speedcam.app.debug/com.speedcam.service.DetectionService
+adb shell pm grant com.speedcam.app.debug android.permission.ACCESS_BACKGROUND_LOCATION
+adb shell am start -n com.speedcam.app.debug/com.speedcam.app.MainActivity
 ```
 
-The ongoing notification shows the distance and limit of the nearest hazard, so a drive can be
-verified end to end before Stage 5 adds audio. It also reports GPS loss and recovery.
+The ongoing notification shows the nearest hazard, GPS loss and recovery, so a drive can be
+verified end to end before Stage 5 adds audio.
 
-**Not yet verified on hardware.** Plan.md §8.1 accepts this stage only after the service
-survives two or more hours backgrounded on API 34 and API 36 and fires correctly on a real
-route. Neither has been done, because no device was available here. The pieces most likely to
-need attention on a real drive are the GPS-loss timeout under tree cover, and whether
-`AlarmManager` actually delivers while the device sleeps.
+Starting the service from outside the app does **not** work and is not meant to:
+`adb shell am start-foreground-service ...` fails with `Requires permission not exported from
+uid 10055`, because on Android 14+ a `location`-typed foreground service may only be started by
+the app's own uid. That is why `ServiceController` exists.
+
+### Verified on device
+
+Samsung SM-S916B, Android 16 / API 36.
+
+| | Result |
+| --- | --- |
+| Foreground promotion | `isForeground=true types=0x00000008` — `FOREGROUND_SERVICE_TYPE_LOCATION`, required from API 34 |
+| Database on device | installed to `databases/speedcam.db`, 921,600 bytes, Room opened it without complaint |
+| Provider | `FusedLocationSource` attached; fused fixes at ~1 Hz, accuracy 5–24 m |
+| GPS-loss watchdog | announced `GPS signal lost` exactly 30 s after the last fix, then `GPS signal recovered` when fixes resumed |
+| End-to-end detection | with the capture distance set to 10 km, reported the two nearest cameras at 8,225 m and 8,237 m; the notification showed the **nearer** one |
+| Backgrounding | survived `KEYCODE_HOME` with the service still foreground and fixes still arriving |
+| Resurrection alarm | registered as `RTC_WAKEUP` with a 15-minute window; the receiver re-arms it without crashing |
+
+Two defects were found by running it rather than by reading it, and both are fixed: the
+notification reported the *furthest* hazard because every decision overwrote it, and a camera
+with no recorded limit was announced as "limit 0 km/h", asserting a fact the database does not
+contain.
+
+**Still unverified**, because they need a device that moves:
+
+- the background-abuse watchdog's positive case. Its negative case passed — backgrounding the
+  app while stationary correctly did not trip it.
+- `BOOT_COMPLETED` itself; only the alarm action was exercised.
+- two hours of backgrounded running, which Plan.md §8.1 requires. Sixty seconds was not two
+  hours.
 
 **Tests.** 212 in total. 135 use synthetic fixtures; the rest exercise the seam against the
 real database — 11 drive the actual engine over rows really parsed out of OpenStreetMap, 15

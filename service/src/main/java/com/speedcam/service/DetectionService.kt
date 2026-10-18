@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.speedcam.core.data.CameraStore
 import com.speedcam.core.detect.AlertContext
@@ -46,11 +47,13 @@ class DetectionService : Service() {
     private val gpsWatchdog = GpsLostWatchdog()
     private val abuseWatchdog = BackgroundAbuseWatchdog()
     private val profiles by lazy { ProfileStore(this) }
+    private val gpsLostText by lazy { getString(R.string.notification_gps_lost) }
 
     private var lastAcceptedFix: Fix? = null
     private var store: CameraStore? = null
     private var visibility: AppVisibility? = null
     private var collecting = false
+    private var fixesSeen = 0L
 
     /** What the notification currently says. Only this class writes it. */
     private var notificationState: String = ""
@@ -104,19 +107,23 @@ class DetectionService : Service() {
     private fun startCollecting() {
         if (collecting) return
         collecting = true
+        Log.i(TAG, "Pipeline starting.")
 
         scope.launch {
             val cameraStore = store ?: CameraStore.open(applicationContext).also { store = it }
             val pipeline = DetectionPipeline(cameraStore.cameraQuery())
             val source = locationSource(this@DetectionService)
 
+            // Armed before the first fix is awaited, so that a provider which never delivers
+            // anything is still reported after the timeout.
             gpsWatchdog.start(System.currentTimeMillis())
+            Log.i(TAG, "Location source: ${source::class.java.simpleName}. Awaiting first fix.")
 
             source.fixes().collect { fix -> onFix(fix, pipeline) }
         }
 
-        // The GPS watchdog runs on its own tick, because a total loss of signal means no fixes
-        // arrive at all and there would be nothing to notice it on.
+        // The GPS watchdog runs on its own tick rather than off incoming fixes, because a total
+        // loss of signal means no fixes arrive to notice it on.
         scope.launch {
             while (true) {
                 delay(WATCHDOG_TICK_MS)
@@ -130,6 +137,15 @@ class DetectionService : Service() {
         pipeline: DetectionPipeline,
     ) {
         gpsWatchdog.onFix(fix.timestampMillis)
+        fixesSeen++
+        // Rate-limited: a one-second cadence would be a line a second forever.
+        if (fixesSeen <= 3 || fixesSeen % LOG_EVERY_N_FIXES == 0L) {
+            Log.i(
+                TAG,
+                "Fix #$fixesSeen provider=${fix.providerTag} acc=${fix.accuracyM.toInt()}m " +
+                    "speed=${fix.speedKmh.toInt()}km/h at ${fix.position.lat},${fix.position.lon}",
+            )
+        }
 
         val profile = profiles.profile()
         val result =
@@ -143,10 +159,25 @@ class DetectionService : Service() {
         // against itself.
         lastAcceptedFix = result.fix
 
-        result.decisions.forEach(::dispatch)
+        if (result.hazards.isNotEmpty()) {
+            Log.i(
+                TAG,
+                "${result.hazards.size} hazard(s), ${result.decisions.size} decision(s): " +
+                    result.hazards.joinToString { h ->
+                        "id=${h.camera.id} d=${h.distanceM.toInt()}m limit=${h.camera.limitKmh}"
+                    },
+            )
+        }
+
+        // Only the nearest. Hazards arrive sorted nearest-first, and dispatching every one of
+        // them would leave the notification describing whichever was furthest away — telling
+        // the driver about a camera 8 km off while one 8.2 km off goes unmentioned, with the
+        // numbers silently swapped for the worse.
+        result.decisions.firstOrNull()?.let(::dispatch)
 
         if (abuseWatchdog.onMoved(System.currentTimeMillis(), fix.position)) {
             // Backgrounded and being driven: the rule from Plan.md §8.1.
+            Log.w(TAG, "Background abuse watchdog tripped; stopping detection.")
             stopSelf()
             return
         }
@@ -161,18 +192,31 @@ class DetectionService : Service() {
      * ongoing notification, which is enough to verify a real drive end to end.
      */
     private fun dispatch(decision: AlertDecision) {
+        val limit = decision.limitKmh?.takeIf { it > 0 }
         notificationState =
-            getString(
-                R.string.notification_alert,
-                decision.distanceM.toInt(),
-                decision.limitKmh ?: 0,
-            )
+            if (limit != null) {
+                getString(R.string.notification_alert, decision.distanceM.toInt(), limit)
+            } else {
+                // No recorded limit is not a limit of zero. Printing "0 km/h" would assert a
+                // fact the database does not contain, and the driver would be right to
+                // dismiss the rest of the message.
+                getString(R.string.notification_alert_unknown_limit, decision.distanceM.toInt())
+            }
     }
 
     private fun refreshNotification() {
         when (gpsWatchdog.evaluate(System.currentTimeMillis())) {
-            GpsStatus.LOST -> notificationState = getString(R.string.notification_gps_lost)
-            GpsStatus.RECOVERED -> notificationState = getString(R.string.notification_gps_recovered)
+            GpsStatus.LOST -> {
+                // Logged once per loss rather than once per tick, which would be a line a second.
+                if (notificationState != gpsLostText) Log.w(TAG, "GPS signal lost.")
+                notificationState = gpsLostText
+            }
+
+            GpsStatus.RECOVERED -> {
+                Log.i(TAG, "GPS signal recovered.")
+                notificationState = getString(R.string.notification_gps_recovered)
+            }
+
             GpsStatus.HEALTHY -> Unit
         }
         getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildNotification(notificationState))
@@ -236,7 +280,9 @@ class DetectionService : Service() {
         const val ACTION_START = "com.speedcam.service.action.START"
         const val ACTION_STOP = "com.speedcam.service.action.STOP"
 
+        private const val TAG = "DetectionService"
         private const val WATCHDOG_TICK_MS = 1_000L
+        private const val LOG_EVERY_N_FIXES = 30L
 
         /** Day begins at 07:00 by this rule. See [isNight]. */
         private const val DAY_START_HOUR = 7
