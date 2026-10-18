@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="channel_detection_name">Camera detection</string>
+    <string name="channel_detection_description">Shows while camera detection is active</string>
+    <string name="notification_title">SpeedCam is running</string>
+    <string name="notification_text">Monitoring for speed cameras</string>
+</resources>

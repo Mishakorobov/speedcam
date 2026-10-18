@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SpeedCam</string>
+
+    <!-- Required attribution for OpenStreetMap-derived camera data (ODbL 1.0).
+         Must remain visible wherever camera data is shown. -->
+    <string name="osm_attribution">Data © OpenStreetMap contributors</string>
+</resources>

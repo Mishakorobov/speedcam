@@ -1,0 +1,57 @@
+build:
+  maxIssues: 0
+
+complexity:
+  LongMethod:
+    active: true
+    threshold: 60
+  LongParameterList:
+    active: true
+    functionThreshold: 6
+    constructorThreshold: 8
+    # Test fixture builders legitimately take many parameters; that is what makes a test
+    # case readable. Production code keeps the default threshold.
+    excludes: ['**/test/**', '**/androidTest/**']
+  TooManyFunctions:
+    active: false
+  NestedBlockDepth:
+    active: true
+    threshold: 4
+    # Tests nest `use {}` and assertion blocks by nature; the depth there carries no
+    # complexity signal. Production code keeps the default threshold.
+    excludes: ['**/test/**', '**/androidTest/**']
+
+style:
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+    excludeCommentStatements: true
+  UnusedPrivateMember:
+    active: true
+  ForbiddenComment:
+    active: false
+  ReturnCount:
+    active: true
+    # The default of 2 is incompatible with guard clauses, which are the idiomatic Kotlin way
+    # to express early exit. Binary parsing in particular reads as a chain of them, each naming
+    # the specific condition that ends a scan or rejects a value. Two pushes the code towards
+    # nesting conditions inside one exit, which is harder to read, not easier.
+    max: 4
+    excludeReturnFromLambda: true
+
+naming:
+  EnumNaming:
+    active: true
+    enumEntryPattern: '[A-Z][_a-zA-Z0-9]*'
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: false
+
+performance:
+  SpreadOperator:
+    active: false

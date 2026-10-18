@@ -1,0 +1,38 @@
+# Gradle
+.gradle/
+build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+*.hprof
+
+# Secrets and signing. A release key must never reach the repository.
+*.jks
+*.keystore
+keystore.properties
+
+# Camera data. All of it is reproducible from osm\ plus tools/import, and totals ~4 GB,
+# so none of it belongs in the repository.
+#
+#   osm\        Geofabrik extracts (*.osm.pbf, ~4 GB) plus imported.txt, the manifest of
+#               which upstream digest was last imported
+#   data\       the built SQLite database and its backup
+#
+# imported.txt is the one exception: a 551-byte record of what was imported, worth keeping
+# so a fresh clone can tell which extracts are missing.
+*.osm.pbf
+*.pbf.md5
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+data/

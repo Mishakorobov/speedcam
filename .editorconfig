@@ -1,0 +1,19 @@
+# ktlint configuration.
+#
+# Formatting rules not listed here use ktlint's `official` code style.
+# Disable rules only where a genuine convention conflicts, and say why.
+
+[*.{kt,kts}]
+ktlint_code_style = ktlint_official
+
+# Compose requires @Composable functions to start with an uppercase letter, so that a call
+# reads as a UI element rather than an operation. ktlint's function-naming rule assumes the
+# opposite convention and does not know about the Compose compiler.
+[app/src/main/java/com/speedcam/app/**/*.kt]
+ktlint_standard_function-naming = disabled
+
+[*.{yml,yaml,json}]
+ktlint_code_style = ktlint_official
+
+[*.{xml}]
+indent_size = 4
