@@ -17,6 +17,8 @@ import com.speedcam.core.data.CameraStore
 import com.speedcam.core.detect.AlertContext
 import com.speedcam.core.detect.AlertDecision
 import com.speedcam.core.detect.Fix
+import com.speedcam.core.media.MediaAlertEngine
+import com.speedcam.core.media.OutputMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -54,6 +56,12 @@ class DetectionService : Service() {
     private var visibility: AppVisibility? = null
     private var collecting = false
     private var fixesSeen = 0L
+
+    /** Stage 5: turns decisions into sound and vibration. Created on first use. */
+    private var mediaEngine: MediaAlertEngine? = null
+
+    private val media: MediaAlertEngine
+        get() = mediaEngine ?: MediaAlertEngine(this).also { mediaEngine = it }
 
     /** What the notification currently says. Only this class writes it. */
     private var notificationState: String = ""
@@ -96,10 +104,39 @@ class DetectionService : Service() {
     override fun onDestroy() {
         visibility?.unregister()
         visibility = null
+        if (mediaEngine != null) mediaEngine?.release()
         scope.cancel()
         store?.close()
         store = null
         super.onDestroy()
+    }
+
+    /**
+     * The output mode alerts are routed through.
+     *
+     * Reads the Bluetooth state the same way [TransportProfile.select] does for the warning
+     * profile: the service is the only component entitled to know about audio routing, so the
+     * headset presence is resolved here rather than guessed at in the media layer.
+     */
+    private fun currentOutputMode(): OutputMode =
+        if (hasConnectedHeadset(this)) {
+            OutputMode.BLUETOOTH_MULTIMEDIA
+        } else {
+            OutputMode.STANDARD
+        }
+
+    private fun micInUse(manager: android.media.AudioManager): Boolean =
+        runCatching { manager.activeRecordingConfigurations.isNotEmpty() }.getOrDefault(false)
+
+    /** Kept honest by [refreshCallState]; AudioManager owns the answer, not this class. */
+    private fun refreshCallState() {
+        val manager = getSystemService(android.media.AudioManager::class.java)
+        if (manager == null) return
+        media.updateCallState(
+            audioMode = manager.mode,
+            microphoneInUse = micInUse(manager),
+            silentDuringCall = profiles.silentDuringCall,
+        )
     }
 
     // ------------------------------------------------------------------- pipeline
@@ -137,6 +174,7 @@ class DetectionService : Service() {
         pipeline: DetectionPipeline,
     ) {
         gpsWatchdog.onFix(fix.timestampMillis)
+        refreshCallState()
         fixesSeen++
         // Rate-limited: a one-second cadence would be a line a second forever.
         if (fixesSeen <= 3 || fixesSeen % LOG_EVERY_N_FIXES == 0L) {
@@ -169,11 +207,26 @@ class DetectionService : Service() {
             )
         }
 
-        // Only the nearest. Hazards arrive sorted nearest-first, and dispatching every one of
+// Only the nearest. Hazards arrive sorted nearest-first, and dispatching every one of
         // them would leave the notification describing whichever was furthest away — telling
         // the driver about a camera 8 km off while one 8.2 km off goes unmentioned, with the
         // numbers silently swapped for the worse.
-        result.decisions.firstOrNull()?.let(::dispatch)
+        result.decisions.firstOrNull()?.let { nearest ->
+            dispatch(nearest)
+
+            // The alert policy has already decided what to say; the cadence latch decides
+            // whether it is heard this tick, and the media engine performs it.
+            val nearestHazard = result.hazards.firstOrNull()
+            if (nearestHazard != null) {
+                media.setOutputMode(currentOutputMode())
+                media.play(
+                    decision = nearest,
+                    hazard = nearestHazard,
+                    isPrimary = true,
+                    nowMillis = System.currentTimeMillis(),
+                )
+            }
+        }
 
         if (abuseWatchdog.onMoved(System.currentTimeMillis(), fix.position)) {
             // Backgrounded and being driven: the rule from Plan.md §8.1.

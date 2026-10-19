@@ -29,30 +29,37 @@ object GagerTones {
     private data class Step(
         val frequencyHz: Int,
         val durationMs: Int,
+        /**
+         * Divisor for the fade length: the ramp occupies `duration / ramp` samples.
+         *
+         * Per step, not one global value. Recovered from the original's `GagerStep` table,
+         * where each rung carries its own ramp: 4, 5, 5, 6, 7.
+         */
+        val ramp: Int,
     )
 
     private val LADDER =
         arrayOf(
-            Step(1328, 500), // 0-1   ~0 km
-            Step(1328, 500),
-            Step(1248, 600), // 2-3
-            Step(1248, 600),
-            Step(1168, 700), // 4-5
-            Step(1168, 700),
-            Step(1088, 800), // 6-7
-            Step(1088, 800),
-            Step(1028, 800), // 8-19
-            Step(1028, 800),
-            Step(1028, 800),
-            Step(1028, 800),
-            Step(1028, 800),
-            Step(1028, 800),
-            Step(1028, 800),
-            Step(1028, 800),
-            Step(1028, 800),
-            Step(1028, 800),
-            Step(1028, 800),
-            Step(1028, 800),
+            Step(1328, 500, 4), // 0-1   ~0 km
+            Step(1328, 500, 4),
+            Step(1248, 600, 5), // 2-3
+            Step(1248, 600, 5),
+            Step(1168, 700, 5), // 4-5
+            Step(1168, 700, 5),
+            Step(1088, 800, 6), // 6-7
+            Step(1088, 800, 6),
+            Step(1028, 800, 7), // 8-19
+            Step(1028, 800, 7),
+            Step(1028, 800, 7),
+            Step(1028, 800, 7),
+            Step(1028, 800, 7),
+            Step(1028, 800, 7),
+            Step(1028, 800, 7),
+            Step(1028, 800, 7),
+            Step(1028, 800, 7),
+            Step(1028, 800, 7),
+            Step(1028, 800, 7),
+            Step(1028, 800, 7),
         )
 
     fun stepIndex(distanceKm: Double): Int = floor(distanceKm * KM_TO_STEP).toInt().coerceIn(0, MAX_INDEX)
@@ -60,6 +67,9 @@ object GagerTones {
     fun frequencyHz(distanceKm: Double): Int = LADDER[stepIndex(distanceKm)].frequencyHz
 
     fun durationMs(distanceKm: Double): Int = LADDER[stepIndex(distanceKm)].durationMs
+
+    /** Fade divisor for the step this distance falls on. */
+    fun ramp(distanceKm: Double): Int = LADDER[stepIndex(distanceKm)].ramp
 
     /**
      * Renders one tone as 16-bit little-endian PCM with linear fade in and out.
@@ -70,7 +80,7 @@ object GagerTones {
         val durationMs = durationMs(distanceKm)
         val frequency = frequencyHz(distanceKm).toDouble()
         val total = SAMPLE_RATE_HZ * durationMs / 1000
-        val ramp = (total / RAMP_DIVISOR).coerceAtLeast(1)
+        val ramp = (total / ramp(distanceKm)).coerceAtLeast(1)
 
         val out = ShortArray(total)
         for (i in 0 until total) {
@@ -85,9 +95,6 @@ object GagerTones {
         }
         return out
     }
-
-    /** Fade length as a fraction of the tone duration. Matches the original's `ramp` parameter. */
-    private const val RAMP_DIVISOR = 3
 
     /** Peak amplitude, about -3 dBFS, leaving headroom against clipping. */
     private const val AMPLITUDE = 22_000.0

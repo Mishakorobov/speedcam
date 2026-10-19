@@ -22,7 +22,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 
 ## Status
 
-**Stage 4 of 9 — foreground service, verified end to end on a real device.**
+**Stage 5 of 9 — media stack: tones, sound bank, speech, vibration, audio focus.**
 
 | Stage | | Status |
 | --- | --- | --- |
@@ -31,7 +31,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 | 2 | Detection engine | **done** — pure engine + 42 fixture tests, plus 20 tests driving the real engine over the real 11k-camera database |
 | 3 | Alert profiles and presets | **done** — policy engine, 8 presets, transport selection, 39 tests |
 | 4 | Foreground service and location pipeline | **done and verified on API 36** — fused provider with fallback, watchdogs, resurrection |
-| 5 | Sound, gager tone, speech, vibration | tone ladder + PCM synthesis done; no playback |
+| 5 | Sound, gager tone, speech, vibration | **done** — engine and policy complete, 42 tests; **audio not heard on a device** |
 | 6 | HUD, camera list, settings | placeholder |
 | 7 | Average-speed zones | import path ready; runtime computation pending |
 | 8 | Scheduled database updates | **done** — `update-osm.bat`, change-detecting and self-verifying |
@@ -89,6 +89,34 @@ matters rather than papering over the gap:
 | What Car/Truck/Moto change | applied natively, not recoverable. Only the selection rule is implemented. |
 | Day/night hours | fixed 07:00–21:00. A guess, and labelled as one: the original's decompile has no twilight calculation to port. |
 
+### Media, and what is not verified about it
+
+Everything that decides *what* to do is a pure function and is unit-tested. Everything that
+*makes a sound* is Android API calls and is **not** verified — no device was used for this
+stage. That split is deliberate: it means the rules can be checked at a desk and only the
+last inch needs a car.
+
+| Piece | Recovered or chosen |
+| --- | --- |
+| Gager tone | ported. `floor(km × 16.0934)`, 8 kHz / 16-bit mono, the 1328→1028 Hz ladder, and the per-step fade divisor 4/5/5/6/7 — which was wrong here until the `GagerStep` table was found |
+| Audio focus | `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`, **usage 12** (`USAGE_ASSISTANCE_NAVIGATION_GUIDANCE`) and `CONTENT_TYPE_SONIFICATION`. Plan.md §7.4 says `USAGE_ALARM`; the decompile says 12, and the code follows the decompile |
+| Output routing | 12 modes ported, including the one that matters: HFP mutes both the beep and the gager rather than emitting a tone the driver cannot hear |
+| Call suppression | `MODE_IN_CALL`, `MODE_IN_COMMUNICATION`, or the microphone being in use, drops the **whole** alert — sound, speech and vibration — and defaults to off |
+| Vibration | one 500 ms pulse at default amplitude; only for the nearest hazard, matching the original |
+| Alert cadence | the original's static latch, generalised into a value. This is the piece that stops an alert firing on every location fix |
+| Speech | **chosen, not ported.** The original's 450 phrases and its distance-to-phrase table are selected in native code and are not recoverable; this is a compact explicit ladder instead |
+| Sound clips | **not shipped.** `sound_alert_0..37` and `beep.m4a` are the original's audio. The bank loads whatever a build contains and falls back to a synthesised tone, which is what this build does |
+
+**Unverified**, and listed rather than glossed:
+
+- that any of it is audible. `AudioTrack` construction, `SoundPool` loading and the vibration
+  pulse have been compiled and linted but never run;
+- that the tone pitch actually rises as the driver closes on a camera, which is the whole point
+  of the gager;
+- that speech timing does not collide with the cadence latch;
+- Bluetooth routing end to end, including the SCO session the original opens for modes 2 and 3
+  and tears down 2 s after playback.
+
 ### Running it
 
 The service is wired and starts itself once location permission has been granted.
@@ -134,7 +162,7 @@ contain.
 - two hours of backgrounded running, which Plan.md §8.1 requires. Sixty seconds was not two
   hours.
 
-**Tests.** 212 in total. 135 use synthetic fixtures; the rest exercise the seam against the
+**Tests.** 267 in total. 135 use synthetic fixtures; the rest exercise the seam against the
 real database — 11 drive the actual engine over rows really parsed out of OpenStreetMap, 15
 cover installing that database onto a device, 9 cover the persistence-to-domain mapping, and 3
 pin the build script and the installer to the same asset path. 39 more cover the alert policy

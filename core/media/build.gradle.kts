@@ -22,6 +22,9 @@ android {
 }
 
 dependencies {
+    // AlertDecision and Hazard appear in MediaAlertEngine's public API, so this is api.
+    api(project(":core:detect"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
 

@@ -54,6 +54,11 @@ class ProfileStore(
         get() = prefs.getFloat(KEY_CAPTURE_DISTANCE_KM, 0f).toDouble()
         set(value) = prefs.edit().putFloat(KEY_CAPTURE_DISTANCE_KM, value.toFloat()).apply()
 
+    /** The "Silent during phone call" setting. Defaults to false, as in the original. */
+    var silentDuringCall: Boolean
+        get() = prefs.getBoolean(KEY_SILENT_DURING_CALL, false)
+        set(value) = prefs.edit().putBoolean(KEY_SILENT_DURING_CALL, value).apply()
+
     /**
      * The profile detection runs under right now.
      *
@@ -80,5 +85,6 @@ class ProfileStore(
         const val KEY_QUICK_SETTING = "quickSetting"
         const val KEY_TRANSPORT = "transport"
         const val KEY_CAPTURE_DISTANCE_KM = "captureDistanceKm"
+        const val KEY_SILENT_DURING_CALL = "silentDuringCall"
     }
 }
