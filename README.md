@@ -117,6 +117,44 @@ last inch needs a car.
 - Bluetooth routing end to end, including the SCO session the original opens for modes 2 and 3
   and tears down 2 s after playback.
 
+### Verified on device
+
+Samsung SM-S916B, Android 16 / API 36. Running the media stack for the first time crashed it,
+which is the point of running it.
+
+| | Result |
+| --- | --- |
+| Tone playback | `AudioTrack` played: 1028 Hz, 800 ms, 6400 samples at 8 kHz — 6400/8000 is exactly 800 ms, so the ladder and the render agree on the device |
+| Vibration | fired, one 500 ms pulse |
+| Speech planning | `SEVEN_KILOMETERS, KILOMETERS, SPEED_CAMERA, ONCOMING_CAMERA` — and the oncoming flag is correct: the nearest camera genuinely is behind a northbound vehicle at that position |
+| Cadence latch | 166 hazard ticks over 3 minutes produced 84 tones and 84 vibrations — exactly one alert in two, matching the 1200 ms window at ~1 Hz |
+| Stability | 3 minutes backgrounded: no crash, no ANR, service still `isForeground=true types=0x00000008`, pid unchanged |
+| GPS watchdog | `GPS signal lost` 30 s after the last fix, `GPS signal recovered` on return |
+| Bluetooth | correctly reports STANDARD with no audio device connected (`A2dpStateMachine` and `HeadsetStateMachine` both disconnected) |
+
+Three defects were found this way and fixed:
+
+- **`SoundBank.load` crashed the app on every fix.** `resourceFor` returns an `Int`, and `0`
+  means absent, so a `?.let` guard did not fire and `SoundPool.load(context, 0, 1)` threw
+  `Resources$NotFoundException`. This build ships no clips, so that branch ran every time. It
+  killed the collection coroutine, meaning detection was dead in practice while the service
+  looked perfectly alive.
+- **The media layer could take detection down with it.** Audio is not the safety-critical loop;
+  the call into it is now isolated so a failing `SoundPool` or `AudioTrack` cannot stop the
+  driver being warned.
+- **The gager played twice per alert**, once as the sound fallback and once for the beep,
+  which on a rising-pitch cue reads as the approach stuttering rather than rising.
+
+**Still unverified**, because the device cannot be made to produce them here:
+
+- the pitch ladder *across distances*. The device is 8,2 km from the nearest camera and cannot
+  be moved, so only the saturated far rung was observable. The ladder itself is unit-tested on
+  the same render function.
+- Bluetooth routing with a device actually connected. The negative case passed.
+- `BOOT_COMPLETED`: it is a protected broadcast and cannot be sent from a shell. The
+  receiver's alarm branch was exercised instead.
+- Two hours backgrounded. Three minutes is not two hours.
+
 ### Running it
 
 The service is wired and starts itself once location permission has been granted.

@@ -119,7 +119,7 @@ class DetectionService : Service() {
      * headset presence is resolved here rather than guessed at in the media layer.
      */
     private fun currentOutputMode(): OutputMode =
-        if (hasConnectedHeadset(this)) {
+        if (hasConnectedAudioDevice(this)) {
             OutputMode.BLUETOOTH_MULTIMEDIA
         } else {
             OutputMode.STANDARD
@@ -218,13 +218,20 @@ class DetectionService : Service() {
             // whether it is heard this tick, and the media engine performs it.
             val nearestHazard = result.hazards.firstOrNull()
             if (nearestHazard != null) {
-                media.setOutputMode(currentOutputMode())
-                media.play(
-                    decision = nearest,
-                    hazard = nearestHazard,
-                    isPrimary = true,
-                    nowMillis = System.currentTimeMillis(),
-                )
+                // Isolated on purpose. Detection is the safety-critical loop and audio is not:
+                // a failing SoundPool or AudioTrack must not be able to stop the driver being
+                // warned. Without this the whole collection dies on the first media exception.
+                runCatching {
+                    media.setOutputMode(currentOutputMode())
+                    media.play(
+                        decision = nearest,
+                        hazard = nearestHazard,
+                        isPrimary = true,
+                        nowMillis = System.currentTimeMillis(),
+                    )
+                }.onFailure {
+                    Log.w(TAG, "Media layer failed; detection continues: ${it.message}")
+                }
             }
         }
 

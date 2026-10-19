@@ -12,7 +12,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 
 /**
- * Whether a Bluetooth hands-free device is connected.
+ * Whether a Bluetooth audio device is connected: hands-free or media.
  *
  * Two things depend on this and neither is available from the media layer: the warning
  * *profile* switches from Common to Car ([com.speedcam.core.detect.TransportProfile.select])
@@ -37,7 +37,7 @@ object BluetoothRoute {
      * refusing to run.
      */
     @SuppressLint("MissingPermission") // Guarded by canQueryConnections below.
-    fun hasConnectedHeadset(context: Context): Boolean {
+    fun hasConnectedAudioDevice(context: Context): Boolean {
         val manager =
             context
                 .getSystemService(BluetoothManager::class.java)
@@ -48,8 +48,13 @@ object BluetoothRoute {
         if (!runCatching { adapter.isEnabled }.getOrDefault(false)) return false
 
         val devices =
-            runCatching { manager.getConnectedDevices(BluetoothProfile.HEADSET) }
-                .onFailure { Log.d(TAG, "Could not query connected headsets: ${it.message}") }
+            runCatching {
+                // Both profiles, as the original's BluetoothHeadsetUtils does. Checking only
+                // HEADSET would miss a car stereo, which negotiates A2DP alone and never
+                // presents a hands-free profile.
+                manager.getConnectedDevices(BluetoothProfile.HEADSET) +
+                    manager.getConnectedDevices(BluetoothProfile.A2DP)
+            }.onFailure { Log.d(TAG, "Could not query connected headsets: ${it.message}") }
                 .getOrDefault(emptyList())
 
         return devices.isNotEmpty()
@@ -61,4 +66,4 @@ object BluetoothRoute {
             PackageManager.PERMISSION_GRANTED
 }
 
-fun hasConnectedHeadset(context: Context): Boolean = BluetoothRoute.hasConnectedHeadset(context)
+fun hasConnectedAudioDevice(context: Context): Boolean = BluetoothRoute.hasConnectedAudioDevice(context)

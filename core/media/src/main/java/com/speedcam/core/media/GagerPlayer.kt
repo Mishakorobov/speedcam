@@ -34,7 +34,7 @@ class GagerPlayer {
         }
 
         val pcm = GagerTones.render(distanceM / 1000.0)
-        return playPcm(pcm, mode, volume)
+        return playPcm(pcm, distanceM, mode, volume)
     }
 
     /** How long the tone for [distanceM] would last, for the cadence latch. */
@@ -42,6 +42,7 @@ class GagerPlayer {
 
     private fun playPcm(
         pcm: ShortArray,
+        distanceM: Double,
         mode: OutputMode,
         volume: Float,
     ): Boolean {
@@ -84,6 +85,12 @@ class GagerPlayer {
             created.setVolume(volume)
             created.play()
             track = created
+            Log.i(
+                TAG,
+                "Gager played: ${GagerTones.frequencyHz(distanceM / 1000.0)} Hz for " +
+                    "${GagerTones.durationMs(distanceM / 1000.0)} ms (step " +
+                    "${GagerTones.stepIndex(distanceM / 1000.0)}, ${pcm.size} samples) on $mode",
+            )
             true
         } catch (e: IllegalStateException) {
             // The audio system is allowed to tear a track down between creation and play.

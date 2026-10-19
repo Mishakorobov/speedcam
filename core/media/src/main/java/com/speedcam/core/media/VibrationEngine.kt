@@ -28,11 +28,16 @@ class VibrationEngine(
 
     @SuppressLint("MissingPermission") // Enforced by the class-level annotation.
     fun vibrate() {
-        val device = vibrator ?: return
+        val device =
+            vibrator ?: run {
+                Log.w(TAG, "No vibrator on this device; skipping.")
+                return
+            }
         runCatching {
             device.vibrate(
                 VibrationEffect.createOneShot(VibrationPolicy.DURATION_MS, VibrationPolicy.DEFAULT_AMPLITUDE),
             )
+            Log.i(TAG, "Vibrated for ${VibrationPolicy.DURATION_MS} ms.")
         }.onFailure { Log.w(TAG, "Vibration refused: ${it.message}") }
     }
 

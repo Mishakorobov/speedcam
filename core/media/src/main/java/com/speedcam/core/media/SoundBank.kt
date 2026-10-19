@@ -67,12 +67,24 @@ class SoundBank(
         }
 
         pool = created
+        // Recorded even when no clip is found: "this build ships none" is a permanent
+        // condition, not a reason to rebuild the pool on every alert.
+        loaded = true
         for (id in 0 until count) {
             val resource = resourceFor(context, "sound_alert_$id")
-            if (resource == 0) continue
-            soundIds[id] = created.load(context, resource, 1)
+            if (resource != NO_RESOURCE) {
+                soundIds[id] = created.load(context, resource, 1)
+            }
         }
-        resourceFor(context, BEEP_RESOURCE)?.let { soundIds[BEEP_ID] = created.load(context, it, 1) }
+
+        // Guarded, not `?.let`: resourceFor returns an Int and 0 means absent, and
+        // SoundPool.load(context, 0, 1) throws Resources$NotFoundException rather than
+        // returning a failure code. This build ships no clips, so this branch is the one
+        // that runs on every start.
+        val beep = resourceFor(context, BEEP_RESOURCE)
+        if (beep != NO_RESOURCE) {
+            soundIds[BEEP_ID] = created.load(context, beep, 1)
+        }
     }
 
     /**
@@ -98,7 +110,17 @@ class SoundBank(
     }
 
     /** True when at least one clip is available, so callers know whether to fall back. */
-    val isLoaded: Boolean get() = loadedCount > 0 || soundIds.isNotEmpty()
+    val isLoaded: Boolean get() = soundIds.isNotEmpty()
+
+    /**
+     * True when the bank is in a decided state, loaded or knowingly empty.
+     *
+     * Distinguishes "no clips shipped" from "never asked to load", which matters because a
+     * build with no clips is a permanent condition and must not be retried on every alert.
+     */
+    val isLoadedOrEmpty: Boolean get() = loaded || soundIds.isNotEmpty()
+
+    private var loaded = false
 
     fun release() {
         pool?.let { runCatching { it.release() } }
@@ -113,10 +135,13 @@ class SoundBank(
     ): Int =
         runCatching {
             context.resources.getIdentifier(name, "raw", context.packageName)
-        }.getOrDefault(0)
+        }.getOrDefault(NO_RESOURCE)
 
     companion object {
         private const val TAG = "SoundBank"
+
+        /** `Resources.getIdentifier` returns 0 for a name that does not exist. */
+        const val NO_RESOURCE = 0
 
         /** The original's `SoundPool.Builder().setMaxStreams(5)`. */
         const val MAX_STREAMS = 5
