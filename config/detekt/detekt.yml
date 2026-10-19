@@ -45,6 +45,13 @@ naming:
   EnumNaming:
     active: true
     enumEntryPattern: '[A-Z][_a-zA-Z0-9]*'
+  FunctionNaming:
+    active: true
+    # Jetpack Compose requires @Composable functions to start with an uppercase letter, and
+    # detekt's default pattern forbids exactly that. Both rules cannot hold, and renaming to
+    # satisfy the linter would break the compiler rather than the style, so the annotation is
+    # the discriminator: Compose functions are exempt, everything else stays camelCase.
+    ignoreAnnotated: ['Composable']
 
 exceptions:
   TooGenericExceptionCaught:

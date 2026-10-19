@@ -58,6 +58,16 @@ interface CameraDao {
     @Query("SELECT * FROM camera WHERE kind = :kind ORDER BY lat, lon")
     fun observeByKind(kind: Int): Flow<List<CameraEntity>>
 
+    /**
+     * Every camera, for the browser screen.
+     *
+     * Suspend because Room refuses main-thread access and the UI calls this on resume. A
+     * blocking variant would either throw or push the problem onto the caller, which is
+     * exactly the mistake this exists to prevent.
+     */
+    @Query("SELECT * FROM camera ORDER BY id")
+    suspend fun allCameras(): List<CameraEntity>
+
     @Query("SELECT * FROM camera WHERE limit_kmh >= :minLimit ORDER BY limit_kmh ASC")
     fun observeAtOrAboveLimit(minLimit: Int): Flow<List<CameraEntity>>
 
@@ -99,6 +109,38 @@ interface SectionDao {
 interface OverrideDao {
     @Query("SELECT * FROM override_")
     fun observeAll(): Flow<List<OverrideEntity>>
+
+    /** One-shot read, for applying the block list to detection without collecting a flow. */
+    @Query("SELECT * FROM override_")
+    suspend fun all(): List<OverrideEntity>
+
+    /**
+     * Overrides within [radiusM] of a point.
+     *
+     * A bounding box rather than a distance function, because SQLite has no trig and the
+     * metres-per-degree conversion depends on latitude. The caller widens the box by the
+     * margin below before matching exactly.
+     */
+    @Query(
+        """
+        SELECT * FROM override_
+        WHERE lat BETWEEN :minLat AND :maxLat
+          AND lon BETWEEN :minLon AND :maxLon
+        """,
+    )
+    suspend fun inBox(
+        minLat: Double,
+        minLon: Double,
+        maxLat: Double,
+        maxLon: Double,
+    ): List<OverrideEntity>
+
+    /** An override exactly at a position, which is how a block is removed by tapping again. */
+    @Query("SELECT * FROM override_ WHERE lat = :lat AND lon = :lon")
+    suspend fun at(
+        lat: Double,
+        lon: Double,
+    ): List<OverrideEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(override: OverrideEntity)

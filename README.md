@@ -22,7 +22,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 
 ## Status
 
-**Stage 5 of 9 — media stack, verified end to end on a real device.**
+**Stage 6 of 9 — HUD, camera list and settings, verified end to end on a real device.**
 
 | Stage | | Status |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 | 3 | Alert profiles and presets | **done** — policy engine, 8 presets, transport selection, 39 tests |
 | 4 | Foreground service and location pipeline | **done and verified on API 36** — fused provider with fallback, watchdogs, resurrection |
 | 5 | Sound, gager tone, speech, vibration | **done and verified on API 36** — tone plays, vibration fires, cadence throttles correctly |
-| 6 | HUD, camera list, settings | placeholder |
+| 6 | HUD, camera list, settings | **done and verified on API 36** — overlay window, 11,430-camera browser, presets and transport |
 | 7 | Average-speed zones | import path ready; runtime computation pending |
 | 8 | Scheduled database updates | **done** — `update-osm.bat`, change-detecting and self-verifying |
 
@@ -155,6 +155,43 @@ Three defects were found this way and fixed:
   receiver's alarm branch was exercised instead.
 - Two hours backgrounded. Three minutes is not two hours.
 
+### The interface
+
+Three tabs, plus a window that is none of them.
+
+The HUD is a `TYPE_APPLICATION_OVERLAY` window, because a driver needs the warning while a
+map is open, not only inside SpeedCam. Two details are the original's and not obvious:
+`FLAG_NOT_FOCUSABLE`, without which the overlay steals input from whatever is behind it; and
+`Gravity.TOP or START` with absolute coordinates, because a corner gravity makes a dragged
+widget snap as it crosses a boundary. Tap mutes for the session, long-press blocks
+permanently — the same pair as the original's alert slots, where a tap is
+`nativeMuteHazardAtSlot` and a long-press is `nativeBlockHazardAtSlot`.
+
+Unlike the original, **mute and block are not the same thing here**. The original keeps its
+blacklist inside the native core and only ever filters the *display* in Java; blocked points
+never enter `nativeGetHazardsState()` at all. Here `BlockingCameraQuery` is a decorator over
+the domain's `CameraQuery`, so a blocked camera genuinely stops producing hazards, and the
+decision is unit-tested at the seam where a driver's action has to survive into the engine.
+
+Matching is positional because the `override_` schema has no column for the upstream id.
+The radius is 40 m: wider than the 5–25 m of drift a receiver shows under tree cover, and
+narrower than the closest spacing this database places cameras, so blocking one cannot
+silently take out its neighbour.
+
+The camera list is our design, not a port — the original has no camera browser at all. Its
+list is of hazard *categories*, with no search and no speed-limit filter, because it is a
+settings screen rather than a database view.
+
+Verified on a Samsung SM-S916B, Android 16 / API 36: the overlay window exists with
+`ty=APPLICATION_OVERLAY`, `fl=1000228` and `gr=TOP START CENTER`; the browser loads all
+11,430 cameras with working type and limit filters; presets, capture distance, transport and
+the HUD toggle all take effect.
+
+**One thing that only running it revealed.** A `ComposeView` inside an overlay window throws
+`IllegalStateException: ViewTreeLifecycleOwner not found` the moment it builds a recomposer —
+an overlay is a bare `FrameLayout` with no activity above it to supply the owners. `HudLifecycleOwner`
+supplies them itself, because the window is not an activity and outlives one.
+
 ### Running it
 
 The service is wired and starts itself once location permission has been granted.
@@ -200,7 +237,7 @@ contain.
 - two hours of backgrounded running, which Plan.md §8.1 requires. Sixty seconds was not two
   hours.
 
-**Tests.** 267 in total. 135 use synthetic fixtures; the rest exercise the seam against the
+**Tests.** 293 in total. 135 use synthetic fixtures; the rest exercise the seam against the
 real database — 11 drive the actual engine over rows really parsed out of OpenStreetMap, 15
 cover installing that database onto a device, 9 cover the persistence-to-domain mapping, and 3
 pin the build script and the installer to the same asset path. 39 more cover the alert policy

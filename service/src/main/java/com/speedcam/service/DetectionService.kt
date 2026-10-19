@@ -149,6 +149,9 @@ class DetectionService : Service() {
         scope.launch {
             val cameraStore = store ?: CameraStore.open(applicationContext).also { store = it }
             val pipeline = DetectionPipeline(cameraStore.cameraQuery())
+            // The driver's blocks must be in force before the first query, not after.
+            cameraStore.refreshOverrides()
+            publishState(cameraStore)
             val source = locationSource(this@DetectionService)
 
             // Armed before the first fix is awaited, so that a provider which never delivers
@@ -167,6 +170,42 @@ class DetectionService : Service() {
                 refreshNotification()
             }
         }
+    }
+
+    /** Pushes the current situation to the interface. */
+    private fun publishHazards(
+        hazards: List<com.speedcam.core.detect.Hazard>,
+        fix: Fix,
+    ) {
+        val views = hazards.toHazardViews()
+        DetectionState.update { previous ->
+            previous.copy(
+                running = true,
+                hasFix = true,
+                speedKmh = fix.speedKmh,
+                nearest = views.getOrNull(0),
+                second = views.getOrNull(1),
+            )
+        }
+    }
+
+    /** Pushes everything that does not change from fix to fix. */
+    private suspend fun publishState(cameraStore: CameraStore) {
+        val profile = profiles.profile()
+        val count = runCatching { cameraStore.cameraCount() }.getOrDefault(0)
+        // Recorded so the settings screen and the list header have a number to show. Anything
+        // else leaves it at zero forever, which reads as "no cameras" rather than "unknown".
+        if (count > 0) profiles.knownCameraCount = count
+
+        DetectionState.set(
+            DetectionUiState(
+                running = true,
+                cameraCount = count,
+                profileName = profiles.quickSetting.displayName,
+                headsetConnected = hasConnectedAudioDevice(this),
+                muted = !profile.beepEnabled && !profile.voice && !profile.vibro,
+            ),
+        )
     }
 
     private fun onFix(
@@ -196,6 +235,8 @@ class DetectionService : Service() {
         // Updated after processing, so the next fix is compared against this one rather than
         // against itself.
         lastAcceptedFix = result.fix
+
+        publishHazards(result.hazards, fix)
 
         if (result.hazards.isNotEmpty()) {
             Log.i(

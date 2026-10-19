@@ -54,6 +54,16 @@ class ProfileStore(
         get() = prefs.getFloat(KEY_CAPTURE_DISTANCE_KM, 0f).toDouble()
         set(value) = prefs.edit().putFloat(KEY_CAPTURE_DISTANCE_KM, value.toFloat()).apply()
 
+    /** Whether the floating HUD is wanted. Separate from the overlay permission, which is the system's. */
+    var hudEnabled: Boolean
+        get() = prefs.getBoolean(KEY_HUD_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_HUD_ENABLED, value).apply()
+
+    /** How many cameras the last import found, shown in the settings and the list header. */
+    var knownCameraCount: Int
+        get() = prefs.getInt(KEY_CAMERA_COUNT, 0)
+        set(value) = prefs.edit().putInt(KEY_CAMERA_COUNT, value).apply()
+
     /** The "Silent during phone call" setting. Defaults to false, as in the original. */
     var silentDuringCall: Boolean
         get() = prefs.getBoolean(KEY_SILENT_DURING_CALL, false)
@@ -86,5 +96,7 @@ class ProfileStore(
         const val KEY_TRANSPORT = "transport"
         const val KEY_CAPTURE_DISTANCE_KM = "captureDistanceKm"
         const val KEY_SILENT_DURING_CALL = "silentDuringCall"
+        const val KEY_CAMERA_COUNT = "cameraCount"
+        const val KEY_HUD_ENABLED = "hudEnabled"
     }
 }

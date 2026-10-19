@@ -1,6 +1,7 @@
 package com.speedcam.core.data
 
 import android.content.Context
+import com.speedcam.core.detect.Camera
 import com.speedcam.core.detect.CameraQuery
 import com.speedcam.core.detect.DetectionEngine
 
@@ -38,6 +39,89 @@ class CameraStore(
     private val query: CameraQueryAdapter = CameraQueryAdapter(database.cameraDao())
 
     /**
+     * The query with the user's overrides applied.
+     *
+     * This, not [cameraQuery], is what detection must read through: a blocked camera that
+     * still produces hazards means the driver's decision to silence it is quietly ignored.
+     */
+    private val blockingQuery = BlockingCameraQuery(query)
+
+    /** How many cameras are loaded, for the settings screen. */
+    suspend fun cameraCount(): Int = runCatching { database.cameraDao().count() }.getOrDefault(0)
+
+    /**
+     * Every camera, for the browser screen.
+     *
+     * A snapshot rather than an observable, because the database is rebuilt out of band by
+     * 	ools/import and the screen re-reads on resume; a live query would repaint the list
+     * for changes the driver did not make.
+     *
+     * Suspend because Room refuses main-thread access and the UI calls this on resume.
+     */
+    suspend fun allCameras(): List<Camera> =
+        runCatching { database.cameraDao().allCameras() }
+            .getOrDefault(emptyList())
+            .map(CameraMappers::toDomain)
+
+    /** The override set currently in force. */
+    @Volatile
+    var overrides: OverrideSet = OverrideSet()
+        private set
+
+    /** Re-reads `override_` and applies it to later queries. */
+    suspend fun refreshOverrides() {
+        val rows = runCatching { database.overrideDao().all() }.getOrElse { emptyList() }
+        overrides = OverrideSet.from(rows)
+        blockingQuery.update(overrides)
+    }
+
+    /** Records a block at [position] and applies it immediately. */
+    suspend fun block(
+        position: com.speedcam.core.geo.LatLon,
+        note: String? = null,
+        created: String = "",
+    ) {
+        database
+            .overrideDao()
+            .upsert(
+                OverrideEntity(
+                    lat = position.lat,
+                    lon = position.lon,
+                    action = OverrideAction.BLOCK.ordinal,
+                    note = note,
+                    created = created,
+                ),
+            )
+        refreshOverrides()
+    }
+
+    /**
+     * Removes overrides covering [position], unblocking whatever it silenced.
+     *
+     * Deletes by proximity rather than by exact coordinates: a block is matched with a
+     * radius, so unblocking has to use the same radius or the row that took effect would not
+     * be the one removed.
+     */
+    suspend fun unblock(position: com.speedcam.core.geo.LatLon) {
+        val box =
+            com.speedcam.core.geo.Geo
+                .boundingBox(position, OverrideSet.MATCH_RADIUS_M)
+        database
+            .overrideDao()
+            .inBox(box.minLat, box.minLon, box.maxLat, box.maxLon)
+            .filter {
+                com.speedcam.core.geo.Geo
+                    .haversineMeters(
+                        com.speedcam.core.geo
+                            .LatLon(it.lat, it.lon),
+                        position,
+                    ) <=
+                    OverrideSet.MATCH_RADIUS_M
+            }.forEach { database.overrideDao().delete(it.id) }
+        refreshOverrides()
+    }
+
+    /**
      * A detector wired to the live database.
      *
      * Returned fresh per call because [DetectionEngine] is stateless: it holds only the query
@@ -53,7 +137,7 @@ class CameraStore(
      * the query rather than a detector that would re-arbitrate nothing and lose access to the
      * accepted fix.
      */
-    fun cameraQuery(): CameraQuery = query
+    fun cameraQuery(): CameraQuery = blockingQuery
 
     override fun close() {
         database.close()
