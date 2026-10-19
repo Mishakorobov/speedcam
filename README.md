@@ -22,7 +22,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 
 ## Status
 
-**Stage 5 of 9 — media stack: tones, sound bank, speech, vibration, audio focus.**
+**Stage 5 of 9 — media stack, verified end to end on a real device.**
 
 | Stage | | Status |
 | --- | --- | --- |
@@ -31,7 +31,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 | 2 | Detection engine | **done** — pure engine + 42 fixture tests, plus 20 tests driving the real engine over the real 11k-camera database |
 | 3 | Alert profiles and presets | **done** — policy engine, 8 presets, transport selection, 39 tests |
 | 4 | Foreground service and location pipeline | **done and verified on API 36** — fused provider with fallback, watchdogs, resurrection |
-| 5 | Sound, gager tone, speech, vibration | **done** — engine and policy complete, 42 tests; **audio not heard on a device** |
+| 5 | Sound, gager tone, speech, vibration | **done and verified on API 36** — tone plays, vibration fires, cadence throttles correctly |
 | 6 | HUD, camera list, settings | placeholder |
 | 7 | Average-speed zones | import path ready; runtime computation pending |
 | 8 | Scheduled database updates | **done** — `update-osm.bat`, change-detecting and self-verifying |
