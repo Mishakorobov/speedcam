@@ -55,4 +55,11 @@ object ServiceController {
         ProfileStore(context).isEnabled = false
         Log.i(TAG, "Detection stopped.")
     }
+
+    /** Requests the running detection service to refresh its queries after a database update. */
+    fun reloadDatabase(context: Context) {
+        val intent =
+            Intent(context, DetectionService::class.java).setAction(DetectionService.ACTION_RELOAD_DATABASE)
+        runCatching { context.startService(intent) }
+    }
 }

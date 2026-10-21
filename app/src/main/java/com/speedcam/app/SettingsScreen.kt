@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -43,6 +45,10 @@ data class SettingsState(
     val sectionCount: Int = 0,
     val databaseBuiltAt: String? = null,
     val dataSourceNote: String,
+    val autoUpdateEnabled: Boolean = true,
+    val lastUpdateCheckAt: String? = null,
+    val lastUpdateStatus: String? = null,
+    val isUpdating: Boolean = false,
 )
 
 /** The settings screen's writes, so a caller passes one callback rather than eight. */
@@ -55,14 +61,16 @@ data class SettingsActions(
     val onRequestHudPermission: () -> Unit = {},
     val onResetHudPosition: () -> Unit = {},
     val onSilentDuringCallChange: (Boolean) -> Unit = {},
+    val onAutoUpdateChange: (Boolean) -> Unit = {},
+    val onCheckForUpdates: () -> Unit = {},
 )
 
 /**
  * Settings.
  *
- * Covers what Plan.md §8.1 asks for — presets, capture distance, transport, data source —
- * plus the two things a driver needs before the HUD is usable: detection on, and the overlay
- * permission.
+ * Covers what Plan.md §8.1 asks for — presets, capture distance, transport, data source,
+ * auto-updates — plus the two things a driver needs before the HUD is usable: detection on,
+ * and the overlay permission.
  */
 @Composable
 fun SettingsScreen(
@@ -71,7 +79,11 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
+        modifier =
+            modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ToggleRow("Detection", state.enabled, actions.onEnabledChange)
@@ -101,7 +113,7 @@ fun SettingsScreen(
 
         HorizontalDivider()
 
-        Text("Data source", style = MaterialTheme.typography.titleSmall)
+        Text("Data source & Updates", style = MaterialTheme.typography.titleSmall)
         Text(text = state.dataSourceNote, style = MaterialTheme.typography.bodySmall)
         val countsText =
             if (state.sectionCount > 0) {
@@ -112,7 +124,29 @@ fun SettingsScreen(
         Text(text = countsText, style = MaterialTheme.typography.bodyMedium)
         state.databaseBuiltAt?.takeIf { it.isNotBlank() }?.let { builtAt ->
             val dateLabel = builtAt.take(10)
-            Text(text = "Database updated: $dateLabel", style = MaterialTheme.typography.bodySmall)
+            Text(text = "Database build: $dateLabel", style = MaterialTheme.typography.bodySmall)
+        }
+        state.lastUpdateCheckAt?.takeIf { it.isNotBlank() }?.let { checkedAt ->
+            val checkLabel = checkedAt.take(16).replace("T", " ")
+            Text(text = "Last checked: $checkLabel", style = MaterialTheme.typography.bodySmall)
+        }
+        state.lastUpdateStatus?.takeIf { it.isNotBlank() }?.let { status ->
+            Text(text = "Status: $status", style = MaterialTheme.typography.bodySmall)
+        }
+
+        ToggleRow("Weekly auto-update (Wi-Fi)", state.autoUpdateEnabled, actions.onAutoUpdateChange)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Button(
+                onClick = actions.onCheckForUpdates,
+                enabled = !state.isUpdating,
+            ) {
+                Text(if (state.isUpdating) "Checking..." else "Check for updates")
+            }
         }
     }
 }

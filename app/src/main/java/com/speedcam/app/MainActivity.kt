@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,9 +35,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.speedcam.app.cameras.CameraRow
 import com.speedcam.app.hud.HudOverlay
 import com.speedcam.app.hud.HudPositionStore
+import com.speedcam.app.sync.DatabaseSyncWorker
 import com.speedcam.core.data.CameraStore
 import com.speedcam.core.detect.Camera
 import com.speedcam.core.geo.LatLon
@@ -86,6 +90,22 @@ class MainActivity : ComponentActivity() {
         requestLocationThenStart()
 
         setContent {
+            val syncWorkInfos by WorkManager
+                .getInstance(this)
+                .getWorkInfosForUniqueWorkFlow(DatabaseSyncWorker.WORK_NAME_IMMEDIATE)
+                .collectAsStateWithLifecycle(initialValue = emptyList())
+
+            val isUpdating =
+                syncWorkInfos.any {
+                    it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
+                }
+
+            LaunchedEffect(syncWorkInfos) {
+                if (syncWorkInfos.any { it.state.isFinished }) {
+                    refreshCameraList()
+                }
+            }
+
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppShell(
@@ -96,6 +116,7 @@ class MainActivity : ComponentActivity() {
                                 blocked = blocked.collectAsStateWithLifecycle().value,
                                 profiles = profiles,
                                 hudPermissionGranted = HudOverlay.canDrawOverlays(this),
+                                isUpdating = isUpdating,
                             ),
                         actions =
                             ShellActions(
@@ -103,6 +124,17 @@ class MainActivity : ComponentActivity() {
                                 onUnblock = ::unblock,
                                 onRequestHudPermission = ::requestOverlayPermission,
                                 onResetHudPosition = { hudPositions.clear() },
+                                onAutoUpdateChange = { enabled ->
+                                    profiles.autoUpdateEnabled = enabled
+                                    if (enabled) {
+                                        DatabaseSyncWorker.schedulePeriodic(this@MainActivity)
+                                    } else {
+                                        DatabaseSyncWorker.cancelPeriodic(this@MainActivity)
+                                    }
+                                },
+                                onCheckForUpdates = {
+                                    DatabaseSyncWorker.triggerImmediate(this@MainActivity)
+                                },
                             ),
                     )
                 }
@@ -127,10 +159,12 @@ class MainActivity : ComponentActivity() {
     // ------------------------------------------------------------------ loading
 
     private fun refreshCameraList() {
-        val cameraStore = store ?: CameraStore.open(applicationContext).also { store = it }
+        val cameraStore = SpeedCamApp.cameraStore(applicationContext)
+        store = cameraStore
         lifecycleScope.launch {
             runCatching {
                 cameraStore.refreshOverrides()
+                cameraStore.refreshSections()
                 cameras.value = cameraStore.allCameras()
                 blocked.value = cameraStore.overrides.blocked
             }.onFailure { Log.w(TAG, "Could not load the camera list: ${it.message}") }
@@ -271,6 +305,7 @@ private data class ShellState(
     val blocked: List<LatLon>,
     val profiles: ProfileStore,
     val hudPermissionGranted: Boolean,
+    val isUpdating: Boolean = false,
 )
 
 /** What the shell does, one callback per screen-level action. */
@@ -279,6 +314,8 @@ private data class ShellActions(
     val onUnblock: (CameraRow) -> Unit,
     val onRequestHudPermission: () -> Unit,
     val onResetHudPosition: () -> Unit,
+    val onAutoUpdateChange: (Boolean) -> Unit,
+    val onCheckForUpdates: () -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -315,37 +352,52 @@ private fun AppShell(
                     modifier = Modifier.padding(padding),
                 )
 
-            Tab.SETTINGS ->
-                SettingsScreen(
-                    state =
-                        SettingsState(
-                            enabled = profiles.isEnabled,
-                            quickSetting = profiles.quickSetting,
-                            captureDistanceKm = profiles.captureDistanceKm,
-                            transport = profiles.transport,
-                            hudEnabled = profiles.hudEnabled,
-                            hudPermissionGranted = state.hudPermissionGranted,
-                            silentDuringCall = profiles.silentDuringCall,
-                            cameraCount = state.ui.cameraCount,
-                            sectionCount = state.ui.sectionCount,
-                            databaseBuiltAt = state.ui.databaseBuiltAt,
-                            dataSourceNote = DATA_SOURCE_NOTE,
-                        ),
-                    actions =
-                        SettingsActions(
-                            onEnabledChange = actions.onEnableChange,
-                            onQuickSettingChange = { profiles.quickSetting = it },
-                            onCaptureDistanceChange = { profiles.captureDistanceKm = it },
-                            onTransportChange = { profiles.transport = it },
-                            onHudEnabledChange = { profiles.hudEnabled = it },
-                            onRequestHudPermission = actions.onRequestHudPermission,
-                            onResetHudPosition = actions.onResetHudPosition,
-                            onSilentDuringCallChange = { profiles.silentDuringCall = it },
-                        ),
-                    modifier = Modifier.padding(padding),
-                )
+            Tab.SETTINGS -> SettingsTab(state, actions, Modifier.padding(padding))
         }
     }
+}
+
+@Composable
+private fun SettingsTab(
+    state: ShellState,
+    actions: ShellActions,
+    modifier: Modifier = Modifier,
+) {
+    val profiles = state.profiles
+    SettingsScreen(
+        state =
+            SettingsState(
+                enabled = profiles.isEnabled,
+                quickSetting = profiles.quickSetting,
+                captureDistanceKm = profiles.captureDistanceKm,
+                transport = profiles.transport,
+                hudEnabled = profiles.hudEnabled,
+                hudPermissionGranted = state.hudPermissionGranted,
+                silentDuringCall = profiles.silentDuringCall,
+                cameraCount = state.ui.cameraCount,
+                sectionCount = state.ui.sectionCount,
+                databaseBuiltAt = state.ui.databaseBuiltAt,
+                dataSourceNote = DATA_SOURCE_NOTE,
+                autoUpdateEnabled = profiles.autoUpdateEnabled,
+                lastUpdateCheckAt = profiles.lastUpdateCheckAt,
+                lastUpdateStatus = profiles.lastUpdateStatus,
+                isUpdating = state.isUpdating,
+            ),
+        actions =
+            SettingsActions(
+                onEnabledChange = actions.onEnableChange,
+                onQuickSettingChange = { profiles.quickSetting = it },
+                onCaptureDistanceChange = { profiles.captureDistanceKm = it },
+                onTransportChange = { profiles.transport = it },
+                onHudEnabledChange = { profiles.hudEnabled = it },
+                onRequestHudPermission = actions.onRequestHudPermission,
+                onResetHudPosition = actions.onResetHudPosition,
+                onSilentDuringCallChange = { profiles.silentDuringCall = it },
+                onAutoUpdateChange = actions.onAutoUpdateChange,
+                onCheckForUpdates = actions.onCheckForUpdates,
+            ),
+        modifier = modifier,
+    )
 }
 
 /** Attribution is not optional: ODbL 1.0 requires crediting OpenStreetMap. */

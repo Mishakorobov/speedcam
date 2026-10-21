@@ -2,7 +2,9 @@ package com.speedcam.app
 
 import android.app.Application
 import android.content.Context
+import com.speedcam.app.sync.DatabaseSyncWorker
 import com.speedcam.core.data.CameraStore
+import com.speedcam.service.ProfileStore
 
 /**
  * Holds the single [CameraStore] for the life of the process.
@@ -11,25 +13,54 @@ import com.speedcam.core.data.CameraStore
  * screen or service binding, and Android guarantees exactly one Application instance per
  * process. The store is created on first use rather than in `onCreate`, so that merely
  * launching the app does not open the database.
- *
- * Note that the database this opens is created empty on first run. Seeding it from the file
- * produced by `tools/import` is a packaging step that has not been done yet.
  */
 class SpeedCamApp : Application() {
     private var store: CameraStore? = null
 
     val cameraStore: CameraStore
-        get() = store ?: CameraStore.open(this).also { store = it }
+        get() =
+            synchronized(this) {
+                store ?: CameraStore.open(this).also { store = it }
+            }
+
+    /** Closes any open handle and reopens the database from disk. */
+    fun reloadCameraStore(): CameraStore =
+        synchronized(this) {
+            store?.close()
+            val newStore = CameraStore.open(this)
+            store = newStore
+            newStore
+        }
+
+    /** Releases the database handle before disk swap operations. */
+    fun closeCameraStore() =
+        synchronized(this) {
+            store?.close()
+            store = null
+        }
+
+    override fun onCreate() {
+        super.onCreate()
+        if (ProfileStore(this).autoUpdateEnabled) {
+            DatabaseSyncWorker.schedulePeriodic(this)
+        }
+    }
 
     override fun onTerminate() {
-        // Only ever invoked on an emulator, but closing the handle keeps the contract honest.
-        store?.close()
-        store = null
+        closeCameraStore()
         super.onTerminate()
     }
 
     companion object {
+        private fun from(context: Context): SpeedCamApp = context.applicationContext as SpeedCamApp
+
         /** Reaches the process-wide store from a `Context` that is not the Application itself. */
-        fun cameraStore(context: Context): CameraStore = (context.applicationContext as SpeedCamApp).cameraStore
+        fun cameraStore(context: Context): CameraStore = from(context).cameraStore
+
+        /** Reopens the process-wide store from disk after an update or rollback. */
+        fun reloadCameraStore(context: Context): CameraStore = from(context).reloadCameraStore()
+
+        /** Closes the database handle cleanly across the process. */
+        fun closeCameraStore(context: Context) = from(context).closeCameraStore()
     }
 }

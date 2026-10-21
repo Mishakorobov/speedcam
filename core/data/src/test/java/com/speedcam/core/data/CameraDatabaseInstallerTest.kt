@@ -242,4 +242,61 @@ class CameraDatabaseInstallerTest {
         assertEquals(expected, CameraDatabaseInstaller.ASSET_PATH)
         assertNotNull(CameraDatabaseInstaller.ASSET_FILE_NAME)
     }
+
+    // --------------------------------------------------------------- replacement & rollback
+
+    @Test
+    fun `replaceWith cleanly updates target and keeps superseded backup`() {
+        val real = realDatabase()
+        val installer = installerFrom(real)
+        installer.installIfNeeded()
+
+        val candidate = File(workDir, "candidate.db")
+        real.copyTo(candidate, overwrite = true)
+
+        val result = installer.replaceWith(candidate)
+        assertTrue(result.isSuccess)
+        assertEquals(DatabaseInstallOutcome.REPAIRED, result.getOrNull())
+        assertTrue(installer.hasSupersededBackup())
+        assertTrue(CameraDatabaseInstaller.looksLikeSqliteDatabase(target))
+
+        // Discarding backup deletes the superseded file
+        assertTrue(installer.discardSupersededBackup())
+        assertFalse(installer.hasSupersededBackup())
+    }
+
+    @Test
+    fun `replaceWith rejects non-sqlite candidate without affecting target`() {
+        val real = realDatabase()
+        val installer = installerFrom(real)
+        installer.installIfNeeded()
+        val originalLength = target.length()
+
+        val badCandidate = File(workDir, "bad.db")
+        badCandidate.writeText("corrupt not sqlite database")
+
+        val result = installer.replaceWith(badCandidate)
+        assertTrue(result.isFailure)
+        assertEquals(originalLength, target.length())
+        assertTrue(CameraDatabaseInstaller.looksLikeSqliteDatabase(target))
+    }
+
+    @Test
+    fun `rollback restores superseded backup when target fails`() {
+        val real = realDatabase()
+        val installer = installerFrom(real)
+        installer.installIfNeeded()
+
+        val candidate = File(workDir, "candidate.db")
+        real.copyTo(candidate, overwrite = true)
+        installer.replaceWith(candidate)
+        assertTrue(installer.hasSupersededBackup())
+
+        // Simulate target corruption or failure
+        target.writeText("corrupted target")
+
+        assertTrue(installer.rollback())
+        assertTrue(CameraDatabaseInstaller.looksLikeSqliteDatabase(target))
+        assertFalse(installer.hasSupersededBackup())
+    }
 }

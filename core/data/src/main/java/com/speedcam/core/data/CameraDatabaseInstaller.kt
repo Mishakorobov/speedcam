@@ -129,6 +129,98 @@ class CameraDatabaseInstaller(
             if (hadPrevious) DatabaseInstallOutcome.REPAIRED else DatabaseInstallOutcome.INSTALLED
         }
 
+    /**
+     * Atomically replaces the current database with [candidate].
+     *
+     * The existing database is preserved as a `.superseded` backup file until explicitly
+     * discarded with [discardSupersededBackup] or restored with [rollback].
+     *
+     * Any existing WAL/SHM sidecars of the current database are cleared so they do not
+     * corrupt the newly installed file.
+     */
+    fun replaceWith(candidate: File): Result<DatabaseInstallOutcome> =
+        runCatching {
+            require(looksLikeSqliteDatabase(candidate)) {
+                "The candidate file is not a valid SQLite database: $candidate"
+            }
+
+            val parent =
+                target.parentFile
+                    ?: error("the database path has no parent directory: $target")
+            if (!parent.isDirectory && !parent.mkdirs()) {
+                error("could not create the database directory: $parent")
+            }
+
+            val superseded = File(parent, target.name + SUPERSEDED_SUFFIX)
+            val hadPrevious = target.exists()
+
+            val targetWal = File(parent, target.name + "-wal")
+            val targetShm = File(parent, target.name + "-shm")
+
+            if (hadPrevious) {
+                superseded.delete()
+                check(target.renameTo(superseded)) {
+                    "could not move the existing database aside to $superseded"
+                }
+                targetWal.delete()
+                targetShm.delete()
+            }
+
+            val staging = File(parent, target.name + STAGING_SUFFIX)
+            staging.delete()
+
+            val placed =
+                if (candidate.parentFile == parent) {
+                    candidate.renameTo(target)
+                } else {
+                    candidate.inputStream().use { input ->
+                        FileOutputStream(staging).use { out ->
+                            input.copyTo(out, BUFFER_BYTES)
+                            out.fd.sync()
+                        }
+                    }
+                    val renamed = staging.renameTo(target)
+                    staging.delete()
+                    renamed
+                }
+
+            if (!placed || !looksLikeSqliteDatabase(target)) {
+                target.delete()
+                if (hadPrevious) superseded.renameTo(target)
+                error("could not place or verify the candidate database at $target; rolled back")
+            }
+
+            if (hadPrevious) DatabaseInstallOutcome.REPAIRED else DatabaseInstallOutcome.INSTALLED
+        }
+
+    /**
+     * Restores the previous database from `.superseded` if one exists.
+     *
+     * Returns true if a backup was present and successfully restored.
+     */
+    fun rollback(): Boolean {
+        val parent = target.parentFile ?: return false
+        val superseded = File(parent, target.name + SUPERSEDED_SUFFIX)
+        if (!superseded.exists() || !looksLikeSqliteDatabase(superseded)) return false
+
+        target.delete()
+        File(parent, target.name + "-wal").delete()
+        File(parent, target.name + "-shm").delete()
+        return superseded.renameTo(target)
+    }
+
+    /** Discards the `.superseded` backup once the replacement has been verified. */
+    fun discardSupersededBackup(): Boolean {
+        val parent = target.parentFile ?: return false
+        return File(parent, target.name + SUPERSEDED_SUFFIX).delete()
+    }
+
+    /** Whether a `.superseded` backup exists. */
+    fun hasSupersededBackup(): Boolean {
+        val parent = target.parentFile ?: return false
+        return File(parent, target.name + SUPERSEDED_SUFFIX).exists()
+    }
+
     companion object {
         /** Kept as a constant so the Gradle task and the installer cannot drift apart. */
         const val ASSET_FILE_NAME = "speedcam.db"

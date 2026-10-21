@@ -83,6 +83,11 @@ class DetectionService : Service() {
         // First, and unconditionally, before anything that might block.
         promoteToForeground(buildNotification(notificationState))
 
+        if (intent?.action == ACTION_RELOAD_DATABASE) {
+            scope.launch { reloadDatabase() }
+            return START_STICKY
+        }
+
         if (intent?.action == ACTION_STOP || !profiles.isEnabled) {
             stopSelf()
             return START_NOT_STICKY
@@ -175,6 +180,20 @@ class DetectionService : Service() {
                 refreshNotification()
             }
         }
+    }
+
+    /** Reloads the camera database queries and active pipeline after an update. */
+    private suspend fun reloadDatabase() {
+        val currentStore = store ?: CameraStore.open(applicationContext).also { store = it }
+        currentStore.refreshOverrides()
+        currentStore.refreshSections()
+        activePipeline = DetectionPipeline(currentStore.cameraQuery(), currentStore.sectionQuery())
+        publishState(currentStore)
+        Log.i(
+            TAG,
+            "Detection database reloaded: ${currentStore.cameraCount()} cameras, " +
+                "${currentStore.sectionCount()} sections.",
+        )
     }
 
     /** Pushes the current situation to the interface. */
@@ -453,6 +472,7 @@ class DetectionService : Service() {
 
         const val ACTION_START = "com.speedcam.service.action.START"
         const val ACTION_STOP = "com.speedcam.service.action.STOP"
+        const val ACTION_RELOAD_DATABASE = "com.speedcam.service.action.RELOAD_DATABASE"
 
         private const val TAG = "DetectionService"
         private const val WATCHDOG_TICK_MS = 1_000L

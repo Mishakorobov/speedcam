@@ -157,6 +157,9 @@ interface OverrideDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(override: OverrideEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(overrides: List<OverrideEntity>)
+
     @Query("DELETE FROM override_ WHERE id = :id")
     suspend fun delete(id: Long)
 }

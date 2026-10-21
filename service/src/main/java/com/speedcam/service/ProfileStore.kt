@@ -69,6 +69,26 @@ class ProfileStore(
         get() = prefs.getBoolean(KEY_SILENT_DURING_CALL, false)
         set(value) = prefs.edit().putBoolean(KEY_SILENT_DURING_CALL, value).apply()
 
+    /** Whether weekly background database updates via WorkManager are enabled. */
+    var autoUpdateEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_UPDATE_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_UPDATE_ENABLED, value).apply()
+
+    /** ISO timestamp when database updates were last checked. */
+    var lastUpdateCheckAt: String?
+        get() = prefs.getString(KEY_LAST_UPDATE_CHECK_AT, null)
+        set(value) = prefs.edit().putString(KEY_LAST_UPDATE_CHECK_AT, value).apply()
+
+    /** Status or error message of the last sync operation. */
+    var lastUpdateStatus: String?
+        get() = prefs.getString(KEY_LAST_UPDATE_STATUS, null)
+        set(value) = prefs.edit().putString(KEY_LAST_UPDATE_STATUS, value).apply()
+
+    /** Custom database update URL (manifest or direct database). Empty means default. */
+    var updateUrl: String
+        get() = prefs.getString(KEY_UPDATE_URL, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_UPDATE_URL, value).apply()
+
     /**
      * The profile detection runs under right now.
      *
@@ -98,5 +118,9 @@ class ProfileStore(
         const val KEY_SILENT_DURING_CALL = "silentDuringCall"
         const val KEY_CAMERA_COUNT = "cameraCount"
         const val KEY_HUD_ENABLED = "hudEnabled"
+        const val KEY_AUTO_UPDATE_ENABLED = "autoUpdateEnabled"
+        const val KEY_LAST_UPDATE_CHECK_AT = "lastUpdateCheckAt"
+        const val KEY_LAST_UPDATE_STATUS = "lastUpdateStatus"
+        const val KEY_UPDATE_URL = "updateUrl"
     }
 }
