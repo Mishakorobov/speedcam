@@ -1,9 +1,12 @@
 package com.speedcam.app
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -51,8 +54,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.work.WorkInfo
@@ -60,6 +65,8 @@ import androidx.work.WorkManager
 import com.speedcam.app.cameras.CameraRow
 import com.speedcam.app.hud.HudOverlay
 import com.speedcam.app.hud.HudOverlayManager
+import com.speedcam.app.pip.PipHelper
+import com.speedcam.app.pip.PipSpeedometerContent
 import com.speedcam.app.sync.DatabaseSyncWorker
 import com.speedcam.app.sync.HazardReportSyncWorker
 import com.speedcam.app.ui.components.EmptyHazardCard
@@ -109,6 +116,22 @@ class MainActivity : ComponentActivity() {
     private var bluetoothDeviceFilter by mutableStateOf("")
     private var bluetoothDeviceFilterName by mutableStateOf("")
     private var bluetoothStopDelaySeconds by mutableStateOf(20)
+    private var isInPipMode by mutableStateOf(false)
+    private var pipEnabled by mutableStateOf(true)
+    private var pipAutoEnter by mutableStateOf(true)
+
+    private val pipActionReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context?,
+                intent: Intent?,
+            ) {
+                when (intent?.action) {
+                    PipHelper.ACTION_PIP_MUTE -> HudOverlayManager.muteNearest(this@MainActivity)
+                    PipHelper.ACTION_PIP_TOGGLE -> setDetectionEnabled(!DetectionState.state.value.running)
+                }
+            }
+        }
 
     /** Tracks the fine-location grant, which background location cannot be requested without. */
     private var fineLocationGranted = false
@@ -130,6 +153,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        isInPipMode = isInPictureInPictureMode
+        pipEnabled = profiles.pipEnabled
+        pipAutoEnter = profiles.pipAutoEnter
         useContraCamDb = profiles.useContraCamDb
         autoStartOnBluetooth = profiles.autoStartOnBluetooth
         autoStopOnBluetooth = profiles.autoStopOnBluetooth
@@ -144,8 +170,67 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        val filter =
+            IntentFilter().apply {
+                addAction(PipHelper.ACTION_PIP_MUTE)
+                addAction(PipHelper.ACTION_PIP_TOGGLE)
+            }
+        ContextCompat.registerReceiver(
+            this,
+            pipActionReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onStop() {
+        super.onStop()
+        runCatching { unregisterReceiver(pipActionReceiver) }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        isInPipMode = isInPictureInPictureMode
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (profiles.pipEnabled && profiles.pipAutoEnter && DetectionState.state.value.running) {
+            PipHelper.enterPipMode(this, DetectionState.state.value, profiles)
+        }
+    }
+
     @Composable
     private fun MainContent() {
+        val detectionState by DetectionState.state.collectAsStateWithLifecycle()
+
+        LaunchedEffect(
+            detectionState.running,
+            detectionState.muted,
+            pipEnabled,
+            pipAutoEnter,
+        ) {
+            PipHelper.updatePipParams(this@MainActivity, detectionState, profiles)
+        }
+
+        SpeedCamTheme {
+            if (isInPipMode) {
+                PipSpeedometerContent(state = detectionState)
+            } else {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    FullscreenAppContent(detectionState)
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun FullscreenAppContent(detectionState: com.speedcam.service.DetectionUiState) {
         val syncWorkInfos by WorkManager
             .getInstance(this)
             .getWorkInfosForUniqueWorkFlow(DatabaseSyncWorker.WORK_NAME_IMMEDIATE)
@@ -183,32 +268,30 @@ class MainActivity : ComponentActivity() {
                 }
             }.getOrDefault(emptyList())
 
-        SpeedCamTheme {
-            Surface(modifier = Modifier.fillMaxSize()) {
-                AppShell(
-                    state =
-                        ShellState(
-                            ui = DetectionState.state.collectAsStateWithLifecycle().value,
-                            cameras = cameras.collectAsStateWithLifecycle().value,
-                            blocked = blocked.collectAsStateWithLifecycle().value,
-                            profiles = profiles,
-                            hudPermissionGranted = HudOverlay.canDrawOverlays(this),
-                            isUpdating = isUpdating,
-                            pendingReportCount = pendingReportCount,
-                            isSyncingReports = isSyncingReports,
-                            isContraCamSyncing = isContraCamSyncing,
-                            useContraCamDb = useContraCamDb,
-                            autoStartOnBluetooth = autoStartOnBluetooth,
-                            autoStopOnBluetooth = autoStopOnBluetooth,
-                            bluetoothDeviceFilter = bluetoothDeviceFilter,
-                            bluetoothDeviceFilterName = bluetoothDeviceFilterName,
-                            bluetoothStopDelaySeconds = bluetoothStopDelaySeconds,
-                            pairedBluetoothDevices = bondedDevices,
-                        ),
-                    actions = buildShellActions(),
-                )
-            }
-        }
+        AppShell(
+            state =
+                ShellState(
+                    ui = detectionState,
+                    cameras = cameras.collectAsStateWithLifecycle().value,
+                    blocked = blocked.collectAsStateWithLifecycle().value,
+                    profiles = profiles,
+                    hudPermissionGranted = HudOverlay.canDrawOverlays(this),
+                    isUpdating = isUpdating,
+                    pendingReportCount = pendingReportCount,
+                    isSyncingReports = isSyncingReports,
+                    isContraCamSyncing = isContraCamSyncing,
+                    useContraCamDb = useContraCamDb,
+                    autoStartOnBluetooth = autoStartOnBluetooth,
+                    autoStopOnBluetooth = autoStopOnBluetooth,
+                    bluetoothDeviceFilter = bluetoothDeviceFilter,
+                    bluetoothDeviceFilterName = bluetoothDeviceFilterName,
+                    bluetoothStopDelaySeconds = bluetoothStopDelaySeconds,
+                    pairedBluetoothDevices = bondedDevices,
+                    pipEnabled = pipEnabled,
+                    pipAutoEnter = pipAutoEnter,
+                ),
+            actions = buildShellActions(),
+        )
     }
 
     private fun toggleAutoUpdate(enabled: Boolean) {
@@ -254,6 +337,19 @@ class MainActivity : ComponentActivity() {
             onBluetoothStopDelaySecondsChange = {
                 bluetoothStopDelaySeconds = it
                 profiles.bluetoothStopDelaySeconds = it
+            },
+            onEnterPip = {
+                PipHelper.enterPipMode(this, DetectionState.state.value, profiles)
+            },
+            onPipEnabledChange = {
+                pipEnabled = it
+                profiles.pipEnabled = it
+                PipHelper.updatePipParams(this, DetectionState.state.value, profiles)
+            },
+            onPipAutoEnterChange = {
+                pipAutoEnter = it
+                profiles.pipAutoEnter = it
+                PipHelper.updatePipParams(this, DetectionState.state.value, profiles)
             },
         )
 
@@ -314,6 +410,8 @@ class MainActivity : ComponentActivity() {
         bluetoothDeviceFilter = profiles.bluetoothDeviceFilter
         bluetoothDeviceFilterName = profiles.bluetoothDeviceFilterName
         bluetoothStopDelaySeconds = profiles.bluetoothStopDelaySeconds
+        pipEnabled = profiles.pipEnabled
+        pipAutoEnter = profiles.pipAutoEnter
         refreshCameraList()
         HudOverlayManager.sync(this)
         if (profiles.isEnabled && fineLocationGranted) ServiceController.start(this)
@@ -480,6 +578,8 @@ private data class ShellState(
     val bluetoothDeviceFilterName: String = "",
     val bluetoothStopDelaySeconds: Int = 20,
     val pairedBluetoothDevices: List<Pair<String, String>> = emptyList(),
+    val pipEnabled: Boolean = true,
+    val pipAutoEnter: Boolean = true,
 )
 
 /** What the shell does, one callback per screen-level action. */
@@ -503,6 +603,9 @@ private data class ShellActions(
     val onAutoStopOnBluetoothChange: (Boolean) -> Unit,
     val onBluetoothDeviceFilterChange: (address: String, name: String) -> Unit,
     val onBluetoothStopDelaySecondsChange: (Int) -> Unit,
+    val onEnterPip: () -> Unit,
+    val onPipEnabledChange: (Boolean) -> Unit,
+    val onPipAutoEnterChange: (Boolean) -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -518,7 +621,9 @@ private fun AppShell(
             AppTopBar(
                 running = state.ui.running,
                 hudEnabled = state.profiles.hudEnabled,
+                pipEnabled = state.pipEnabled,
                 onToggleHud = actions.onToggleHud,
+                onEnterPip = actions.onEnterPip,
             )
         },
         bottomBar = {
@@ -549,7 +654,9 @@ private fun AppShell(
 private fun AppTopBar(
     running: Boolean,
     hudEnabled: Boolean,
+    pipEnabled: Boolean,
     onToggleHud: () -> Unit,
+    onEnterPip: () -> Unit,
 ) {
     TopAppBar(
         title = {
@@ -570,6 +677,15 @@ private fun AppTopBar(
             }
         },
         actions = {
+            if (pipEnabled) {
+                IconButton(onClick = onEnterPip) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_picture_in_picture),
+                        contentDescription = "Picture in Picture",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             IconButton(onClick = onToggleHud) {
                 val tint =
                     if (hudEnabled) {
@@ -649,6 +765,8 @@ private fun buildSettingsState(state: ShellState): SettingsState {
         bluetoothDeviceFilterName = state.bluetoothDeviceFilterName,
         bluetoothStopDelaySeconds = state.bluetoothStopDelaySeconds,
         pairedBluetoothDevices = state.pairedBluetoothDevices,
+        pipEnabled = state.pipEnabled,
+        pipAutoEnter = state.pipAutoEnter,
     )
 }
 
@@ -681,6 +799,8 @@ private fun buildSettingsActions(
         onAutoStopOnBluetoothChange = actions.onAutoStopOnBluetoothChange,
         onBluetoothDeviceFilterChange = actions.onBluetoothDeviceFilterChange,
         onBluetoothStopDelaySecondsChange = actions.onBluetoothStopDelaySecondsChange,
+        onPipEnabledChange = actions.onPipEnabledChange,
+        onPipAutoEnterChange = actions.onPipAutoEnterChange,
     )
 
 @Composable

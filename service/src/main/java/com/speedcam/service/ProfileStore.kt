@@ -164,6 +164,16 @@ class ProfileStore(
         get() = prefs.getInt(KEY_BLUETOOTH_STOP_DELAY_SECONDS, DEFAULT_STOP_DELAY_SECONDS)
         set(value) = prefs.edit().putInt(KEY_BLUETOOTH_STOP_DELAY_SECONDS, value).apply()
 
+    /** Whether Picture-in-Picture speedometer mode is enabled. */
+    var pipEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PIP_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_PIP_ENABLED, value).apply()
+
+    /** Automatically enter PiP when navigating away (Home/app switch) while detection is active. */
+    var pipAutoEnter: Boolean
+        get() = prefs.getBoolean(KEY_PIP_AUTO_ENTER, true)
+        set(value) = prefs.edit().putBoolean(KEY_PIP_AUTO_ENTER, value).apply()
+
     /**
      * The profile detection runs under right now.
      *
@@ -211,6 +221,8 @@ class ProfileStore(
         const val KEY_BLUETOOTH_DEVICE_FILTER = "bluetoothDeviceFilter"
         const val KEY_BLUETOOTH_DEVICE_FILTER_NAME = "bluetoothDeviceFilterName"
         const val KEY_BLUETOOTH_STOP_DELAY_SECONDS = "bluetoothStopDelaySeconds"
+        const val KEY_PIP_ENABLED = "pipEnabled"
+        const val KEY_PIP_AUTO_ENTER = "pipAutoEnter"
         const val DEFAULT_STOP_DELAY_SECONDS = 20
     }
 }

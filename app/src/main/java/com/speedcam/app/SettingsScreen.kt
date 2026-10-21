@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Warning
@@ -89,6 +90,8 @@ data class SettingsState(
     val bluetoothDeviceFilterName: String = "",
     val bluetoothStopDelaySeconds: Int = 20,
     val pairedBluetoothDevices: List<Pair<String, String>> = emptyList(),
+    val pipEnabled: Boolean = true,
+    val pipAutoEnter: Boolean = true,
 )
 
 /** The settings screen's writes, bundled for reviewability. */
@@ -113,6 +116,8 @@ data class SettingsActions(
     val onAutoStopOnBluetoothChange: (Boolean) -> Unit = {},
     val onBluetoothDeviceFilterChange: (address: String, name: String) -> Unit = { _, _ -> },
     val onBluetoothStopDelaySecondsChange: (Int) -> Unit = {},
+    val onPipEnabledChange: (Boolean) -> Unit = {},
+    val onPipAutoEnterChange: (Boolean) -> Unit = {},
 )
 
 /**
@@ -138,6 +143,7 @@ fun SettingsScreen(
         BluetoothAutomationSectionCard(state = state, actions = actions)
         AudioSectionCard(state = state, actions = actions)
         HudSectionCard(state = state, actions = actions)
+        PipSectionCard(state = state, actions = actions)
         DatabaseSyncSectionCard(state = state, actions = actions)
         ContraCamSectionCard(state = state, actions = actions)
         HazardOutboxSectionCard(state = state, actions = actions)
@@ -373,6 +379,33 @@ private fun HudSectionCard(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Reset HUD Window Position")
+        }
+    }
+}
+
+@Composable
+private fun PipSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "Picture-in-Picture (PiP)",
+        icon = Icons.Default.PictureInPicture,
+    ) {
+        SettingsToggleItem(
+            title = "Picture-in-Picture Speedometer",
+            subtitle = "Floating speedometer window while using other navigation apps",
+            checked = state.pipEnabled,
+            onCheckedChange = actions.onPipEnabledChange,
+        )
+
+        if (state.pipEnabled) {
+            SettingsToggleItem(
+                title = "Auto-Enter on App Exit",
+                subtitle = "Switch to PiP automatically when returning Home during active detection",
+                checked = state.pipAutoEnter,
+                onCheckedChange = actions.onPipAutoEnterChange,
+            )
         }
     }
 }
