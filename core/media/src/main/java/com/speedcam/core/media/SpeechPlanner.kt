@@ -3,6 +3,7 @@ package com.speedcam.core.media
 import com.speedcam.core.detect.AlertDecision
 import com.speedcam.core.detect.CameraKind
 import com.speedcam.core.detect.Hazard
+import kotlin.math.roundToInt
 
 /**
  * What to say, in order.
@@ -16,6 +17,10 @@ data class SpeechPlan(
     val phrases: List<Phrase>,
     /** True when the driver is being told to slow down. */
     val warnsExcess: Boolean = false,
+    /** Enforced speed limit in km/h, when the announcement carries one. */
+    val limitKmh: Int? = null,
+    /** Achieved average speed in km/h, spoken on leaving an average-speed corridor. */
+    val achievedAverageKmh: Int? = null,
 ) {
     val isEmpty: Boolean get() = phrases.isEmpty()
 }
@@ -63,29 +68,47 @@ object SpeechPlanner {
             phrases += Phrase.DECREASE_SPEED
         }
 
-        return SpeechPlan(phrases = phrases, warnsExcess = warns)
+        return SpeechPlan(
+            phrases = phrases,
+            warnsExcess = warns,
+            limitKmh = limit,
+        )
     }
 
     /**
-     * Spoken on entering a measured-speed corridor. Stage 7 computes the exit.
+     * Spoken on entering a measured-speed corridor, carrying the corridor's [limitKmh].
      *
-     * The corridor's limit is not spoken, because this phrase set has no number vocabulary —
-     * only the words for distance. Announcing the limit needs number phrases, which the
-     * original gets from its native layer and which are not recoverable. Adding them is a
-     * small, well-defined piece of work and is not faked here.
+     * Plan.md §8.1: "Announce zone entry with the limit and zone exit with the achieved average."
      */
-    fun zoneEntered(): SpeechPlan =
+    fun zoneEntered(limitKmh: Int): SpeechPlan =
         SpeechPlan(
-            phrases = listOf(Phrase.AVERAGE_SPEED_ZONE_ENTERED),
+            phrases = listOf(Phrase.AVERAGE_SPEED_ZONE_ENTERED, Phrase.SPEED_LIMIT),
             warnsExcess = false,
+            limitKmh = limitKmh.takeIf { it > 0 },
         )
 
-    /** Spoken on leaving one, with the average actually achieved. */
-    fun zoneExited(averageKmh: Double): SpeechPlan =
-        SpeechPlan(
-            phrases = listOf(Phrase.AVERAGE_SPEED_ZONE_EXIT),
-            warnsExcess = averageKmh > EXCESS_THRESHOLD_KMH,
+    /**
+     * Spoken on leaving a measured-speed corridor, with the [averageKmh] actually achieved
+     * and the corridor's [limitKmh].
+     */
+    fun zoneExited(
+        averageKmh: Double,
+        limitKmh: Int,
+    ): SpeechPlan {
+        val warns = limitKmh > 0 && (averageKmh - limitKmh) >= EXCESS_THRESHOLD_KMH
+        val phrases =
+            if (warns) {
+                listOf(Phrase.AVERAGE_SPEED_ZONE_EXIT, Phrase.DECREASE_SPEED)
+            } else {
+                listOf(Phrase.AVERAGE_SPEED_ZONE_EXIT)
+            }
+        return SpeechPlan(
+            phrases = phrases,
+            warnsExcess = warns,
+            limitKmh = limitKmh.takeIf { it > 0 },
+            achievedAverageKmh = averageKmh.roundToInt(),
         )
+    }
 
     private fun cameraPhrase(kind: CameraKind): Phrase =
         when (kind) {

@@ -2,6 +2,7 @@ package com.speedcam.service
 
 import com.speedcam.core.detect.CameraKind
 import com.speedcam.core.detect.Hazard
+import com.speedcam.core.detect.SectionEvent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -19,6 +20,16 @@ data class HazardView(
     val excessKmh: Double?,
 )
 
+/** Live or just-completed average-speed corridor state for the HUD and status screen. */
+data class SectionUiState(
+    val limitKmh: Int,
+    val averageKmh: Double,
+    val remainingM: Double,
+    val completed: Boolean = false,
+) {
+    val overLimit: Boolean get() = limitKmh > 0 && averageKmh > limitKmh
+}
+
 /**
  * Everything the interface needs to draw itself.
  *
@@ -34,6 +45,8 @@ data class DetectionUiState(
     val nearest: HazardView? = null,
     /** The two nearest, for the two-slot layout the original uses. */
     val second: HazardView? = null,
+    /** Active or just-exited average-speed corridor, or null when outside any SPECS zone. */
+    val activeSection: SectionUiState? = null,
     val gpsStatus: GpsStatus = GpsStatus.HEALTHY,
     val cameraCount: Int = 0,
     val profileName: String = "",
@@ -41,13 +54,14 @@ data class DetectionUiState(
     val muted: Boolean = false,
 ) {
     /**
-     * True when the driver is over the limit of the nearest camera.
+     * True when the driver is over the limit of the nearest camera or the active SPECS zone.
      *
      * The original turns its bubble red on `speed > limit + legalExcess`; there is no
      * tolerance setting here, so this is the plain comparison.
      */
     val overLimit: Boolean
         get() {
+            if (activeSection?.overLimit == true) return true
             val hazard = nearest ?: return false
             val limit = hazard.limitKmh?.takeIf { it > 0 } ?: return false
             return speedKmh > limit
@@ -94,4 +108,34 @@ fun List<Hazard>.toHazardViews(limit: Int = 2): List<HazardView> =
             behind = hazard.isBehind,
             excessKmh = hazard.excessKmh,
         )
+    }
+
+/** Maps a [SectionEvent] into the UI state shown by the HUD and status screen. */
+fun SectionEvent.toSectionUiState(): SectionUiState? =
+    when (this) {
+        is SectionEvent.Entered ->
+            SectionUiState(
+                limitKmh = section.limitKmh,
+                averageKmh = 0.0,
+                remainingM = section.lengthM,
+                completed = false,
+            )
+
+        is SectionEvent.Progress ->
+            SectionUiState(
+                limitKmh = section.limitKmh,
+                averageKmh = averageKmh,
+                remainingM = remainingM,
+                completed = false,
+            )
+
+        is SectionEvent.Exited ->
+            SectionUiState(
+                limitKmh = section.limitKmh,
+                averageKmh = averageKmh,
+                remainingM = 0.0,
+                completed = true,
+            )
+
+        is SectionEvent.Aborted -> null
     }

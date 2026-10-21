@@ -91,8 +91,10 @@ fun HudContent(
             ) {
                 HazardBadge(state)
                 SpeedReadout(state.speedKmh)
-                LimitBadge(state.nearest?.limitKmh)
+                LimitBadge(state.activeSection?.limitKmh ?: state.nearest?.limitKmh)
             }
+
+            SectionReadout(state.activeSection)
 
             if (dragging) {
                 Text(
@@ -107,10 +109,22 @@ fun HudContent(
 }
 
 @Composable
+private fun SectionReadout(section: com.speedcam.service.SectionUiState?) {
+    if (section == null) return
+    Text(
+        text = "~${section.averageKmh.roundToInt()} km/h · ${section.remainingM.roundToInt()} m",
+        color = Color.White.copy(alpha = 0.85f),
+        fontSize = 10.sp,
+        modifier = Modifier.padding(top = 2.dp),
+    )
+}
+
+@Composable
 private fun HazardBadge(state: com.speedcam.service.DetectionUiState) {
     val hazard = state.nearest
     val text =
         when {
+            state.activeSection != null -> "AVG"
             hazard == null -> "—"
             hazard.behind -> "ONC"
             else -> "CAM"

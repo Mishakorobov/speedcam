@@ -6,6 +6,8 @@
     <string name="notification_text">Monitoring for speed cameras</string>
     <string name="notification_alert">Camera in %1$d m, limit %2$d km/h</string>
     <string name="notification_alert_unknown_limit">Camera in %1$d m, limit unknown</string>
+    <string name="notification_section_entered">Average-speed zone, limit %1$d km/h</string>
+    <string name="notification_section_exited">Average speed %1$d km/h (limit %2$d km/h)</string>
     <string name="notification_gps_lost">GPS signal lost</string>
     <string name="notification_gps_recovered">GPS signal restored</string>
 </resources>

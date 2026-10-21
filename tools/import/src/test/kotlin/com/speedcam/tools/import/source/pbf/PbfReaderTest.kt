@@ -433,4 +433,59 @@ class PbfImporterTest {
         assertTrue(result.cameras.isEmpty(), "only highway=speed_camera counts")
         assertEquals(2L, result.nodesScanned)
     }
+
+    @Test
+    fun `an average-speed relation with device roles and node-level maxspeed resolves`() {
+        val strings =
+            listOf(
+                "",
+                "type", // 1
+                "enforcement", // 2
+                "average_speed", // 3
+                "device", // 4
+                "highway", // 5
+                "speed_camera", // 6
+                "maxspeed", // 7
+                "110", // 8
+            )
+
+        val relationBlock =
+            PbfBuilder.primitiveBlock(
+                strings = strings,
+                groups =
+                    listOf(
+                        PbfBuilder.field(
+                            4,
+                            PbfBuilder.relation(
+                                id = 9002L,
+                                keysVals = listOf(1, 2, 2, 3),
+                                types = listOf(0, 0),
+                                memberIds = listOf(601L, 602L),
+                                roles = listOf(4, 4),
+                            ),
+                        ),
+                    ),
+            )
+
+        val nodeBlock =
+            PbfBuilder.primitiveBlock(
+                strings = strings,
+                groups =
+                    listOf(
+                        PbfBuilder.field(
+                            2,
+                            PbfBuilder.denseNodes(
+                                ids = listOf(601L, 602L),
+                                lats = listOf(551_000_000L, 551_300_000L),
+                                lons = listOf(374_000_000L, 374_300_000L),
+                                keysVals = listOf(5, 6, 7, 8, 0, 5, 6, 0),
+                            ),
+                        ),
+                    ),
+            )
+
+        val result = PbfImporter().import(write(listOf(relationBlock, nodeBlock), "device_asc.osm.pbf"))
+        assertEquals(1, result.sections.size)
+        assertEquals(110, result.sections.single().limitKmh)
+    }
 }

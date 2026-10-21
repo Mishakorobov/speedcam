@@ -318,24 +318,27 @@ class PbfReader(
         var id = 0L
         var lat = 0L
         var lon = 0L
-        var keysVals = IntArray(0)
+        var keys = IntArray(0)
+        var vals = IntArray(0)
 
         while (reader.hasNext()) {
             val field = reader.next()
             when (field.number) {
                 1 -> id = ProtoReader.zigzagDecode(reader.readVarint())
-                2 -> keysVals = readVarintKeysVals(reader)
+                2 -> keys = readPackedInt32(reader)
+                3 -> vals = readPackedInt32(reader)
                 8 -> lat = ProtoReader.zigzagDecode(reader.readVarint())
                 9 -> lon = ProtoReader.zigzagDecode(reader.readVarint())
                 else -> reader.skip(field.wireType)
             }
         }
-        return SimpleNode(id, lat, lon, keysVals)
+        return SimpleNode(id, lat, lon, interleaveKeysVals(keys, vals))
     }
 
     private fun readRelation(reader: ProtoReader): Relation {
         var id = 0L
-        var keysVals = IntArray(0)
+        var keys = IntArray(0)
+        var vals = IntArray(0)
         var roles = IntArray(0)
         var memberIds = LongArray(0)
         var types = IntArray(0)
@@ -343,8 +346,14 @@ class PbfReader(
         while (reader.hasNext()) {
             val field = reader.next()
             when (field.number) {
-                1 -> id = ProtoReader.zigzagDecode(reader.readVarint())
-                2 -> keysVals = readPackedInt32(reader)
+                // `Relation.id` in osmformat.proto is `required int64 id = 1` (plain varint,
+                // unlike `Node.id` and `DenseNodes.id` which are sint64), and its tags sit in
+                // parallel packed arrays `keys = 2` and `vals = 3` rather than an interleaved
+                // `keys_vals` stream. Skipping field 3 paired keys with keys and silently
+                // dropped every relation in every Geofabrik extract.
+                1 -> id = reader.readVarint()
+                2 -> keys = readPackedInt32(reader)
+                3 -> vals = readPackedInt32(reader)
                 8 -> roles = readPackedInt32(reader)
                 9 -> memberIds = reader.readPackedSint64()
                 10 -> types = readPackedInt32(reader)
@@ -352,18 +361,21 @@ class PbfReader(
             }
         }
         // memberIds are delta-encoded across the relation's member list.
-        return Relation(id, keysVals, types, undelta(memberIds), roles)
+        return Relation(id, interleaveKeysVals(keys, vals), types, undelta(memberIds), roles)
     }
 
-    /** Node key/value pairs are plain varints terminated by a zero. */
-    private fun readVarintKeysVals(reader: ProtoReader): IntArray {
-        val out = mutableListOf<Int>()
-        while (reader.hasNext()) {
-            val v = reader.readVarint().toInt()
-            if (v == 0) break
-            out += v
+    /** Interleaves parallel `keys` and `vals` arrays into `[k0, v0, k1, v1, ...]`. */
+    private fun interleaveKeysVals(
+        keys: IntArray,
+        vals: IntArray,
+    ): IntArray {
+        val pairs = minOf(keys.size, vals.size)
+        val out = IntArray(pairs * 2)
+        for (i in 0 until pairs) {
+            out[i * 2] = keys[i]
+            out[i * 2 + 1] = vals[i]
         }
-        return out.toIntArray()
+        return out
     }
 
     private fun readPackedInt32(reader: ProtoReader): IntArray {

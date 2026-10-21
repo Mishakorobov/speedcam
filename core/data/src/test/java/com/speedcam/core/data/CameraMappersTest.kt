@@ -3,6 +3,7 @@ package com.speedcam.core.data
 import com.speedcam.core.detect.Camera
 import com.speedcam.core.detect.CameraKind
 import com.speedcam.core.detect.CameraSource
+import com.speedcam.core.detect.SectionRecord
 import com.speedcam.core.geo.LatLon
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -142,5 +143,30 @@ class CameraMappersTest {
         assertNull(restored.limitKmh)
         assertNull(restored.externalId)
         assertEquals(CameraSource.MANUAL, restored.source)
+    }
+
+    @Test
+    fun `section round trip preserves endpoints, limit and active flag`() {
+        val original =
+            SectionRecord(
+                from = LatLon(55.70, 37.50),
+                to = LatLon(55.72, 37.52),
+                limitKmh = 90,
+                active = true,
+            )
+        assertEquals(original, SectionMappers.toDomainOrNull(SectionMappers.toEntity(original)))
+    }
+
+    @Test
+    fun `a section entity with a non-positive limit is dropped rather than throwing`() {
+        val invalid =
+            SectionEntity(
+                fromLat = 55.70,
+                fromLon = 37.50,
+                toLat = 55.72,
+                toLon = 37.52,
+                limitKmh = 0,
+            )
+        assertNull(SectionMappers.toDomainOrNull(invalid))
     }
 }

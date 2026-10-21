@@ -92,7 +92,11 @@ object PbfBuilder {
         return out.toByteArray()
     }
 
-    /** Builds a `Relation` with the given members. */
+    /**
+     * Builds a `Relation` with the given members, matching `osmformat.proto`:
+     *  - field 1 (`id`): plain `int64` varint (not zigzag),
+     *  - field 2 (`keys`) and field 3 (`vals`): parallel packed `uint32` arrays.
+     */
     fun relation(
         id: Long,
         keysVals: List<Int>,
@@ -101,7 +105,7 @@ object PbfBuilder {
         roles: List<Int>,
     ): ByteArray {
         val out = ByteArrayOutputStream()
-        out.write(varintField(1, zigzag(id)))
+        out.write(varintField(1, id))
 
         fun packed(values: List<Int>): ByteArray {
             val b = ByteArrayOutputStream()
@@ -119,7 +123,10 @@ object PbfBuilder {
             return b.toByteArray()
         }
 
-        out.write(field(2, packed(keysVals)))
+        val keys = keysVals.filterIndexed { index, _ -> index % 2 == 0 }
+        val vals = keysVals.filterIndexed { index, _ -> index % 2 == 1 }
+        out.write(field(2, packed(keys)))
+        out.write(field(3, packed(vals)))
         out.write(field(8, packed(roles)))
         out.write(field(9, packedDelta(memberIds)))
         out.write(field(10, packed(types)))

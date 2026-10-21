@@ -390,6 +390,8 @@ private fun StatusTab(
             )
         }
 
+        SectionStatusRow(state.activeSection)
+
         Text(
             text =
                 "Profile: ${state.profileName}" +
@@ -403,4 +405,21 @@ private fun StatusTab(
             textAlign = TextAlign.Start,
         )
     }
+}
+
+@Composable
+private fun SectionStatusRow(section: com.speedcam.service.SectionUiState?) {
+    if (section == null) return
+    Text(
+        text =
+            "Average-speed zone: ~${section.averageKmh.toInt()} km/h " +
+                "(limit ${section.limitKmh} km/h, ${section.remainingM.toInt()} m left)",
+        style = MaterialTheme.typography.bodyLarge,
+        color =
+            if (section.overLimit) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+    )
 }

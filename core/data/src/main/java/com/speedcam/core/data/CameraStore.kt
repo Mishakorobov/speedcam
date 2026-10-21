@@ -4,6 +4,8 @@ import android.content.Context
 import com.speedcam.core.detect.Camera
 import com.speedcam.core.detect.CameraQuery
 import com.speedcam.core.detect.DetectionEngine
+import com.speedcam.core.detect.SectionQuery
+import com.speedcam.core.detect.SectionRecord
 
 /**
  * The assembly point for the camera data layer.
@@ -68,11 +70,22 @@ class CameraStore(
     var overrides: OverrideSet = OverrideSet()
         private set
 
+    /** Active average-speed corridors currently loaded in memory. */
+    @Volatile
+    var sections: List<SectionRecord> = emptyList()
+        private set
+
     /** Re-reads `override_` and applies it to later queries. */
     suspend fun refreshOverrides() {
         val rows = runCatching { database.overrideDao().all() }.getOrElse { emptyList() }
         overrides = OverrideSet.from(rows)
         blockingQuery.update(overrides)
+    }
+
+    /** Re-reads active average-speed corridors from `section`. */
+    suspend fun refreshSections() {
+        val rows = runCatching { database.sectionDao().active() }.getOrElse { emptyList() }
+        sections = SectionMappers.toDomainList(rows)
     }
 
     /** Records a block at [position] and applies it immediately. */
@@ -138,6 +151,14 @@ class CameraStore(
      * accepted fix.
      */
     fun cameraQuery(): CameraQuery = blockingQuery
+
+    /**
+     * Supplies active average-speed corridors to [com.speedcam.core.detect.AverageSpeedTracker].
+     *
+     * Backed by the in-memory [sections] snapshot refreshed at startup so the detection loop
+     * never blocks on a SQLite read per fix.
+     */
+    fun sectionQuery(): SectionQuery = SectionQuery { sections }
 
     override fun close() {
         database.close()

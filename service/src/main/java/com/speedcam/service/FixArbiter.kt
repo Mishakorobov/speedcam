@@ -50,6 +50,7 @@ object FixArbiter {
             // the two is fused, that one is authoritative regardless of the accuracy comparison.
             candidate.isFused && !current.isFused -> candidate
             current.isFused && !candidate.isFused -> current
+            candidate.isFused && current.isFused && candidate.timestampMillis > current.timestampMillis -> candidate
             candidate.accuracyM.toDouble() + slackMetres(current, candidate) < current.accuracyM -> candidate
             else -> current
         }

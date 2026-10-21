@@ -16,7 +16,9 @@ import androidx.core.app.NotificationCompat
 import com.speedcam.core.data.CameraStore
 import com.speedcam.core.detect.AlertContext
 import com.speedcam.core.detect.AlertDecision
+import com.speedcam.core.detect.AlertProfile
 import com.speedcam.core.detect.Fix
+import com.speedcam.core.detect.SectionEvent
 import com.speedcam.core.media.MediaAlertEngine
 import com.speedcam.core.media.OutputMode
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +55,7 @@ class DetectionService : Service() {
 
     private var lastAcceptedFix: Fix? = null
     private var store: CameraStore? = null
+    private var activePipeline: DetectionPipeline? = null
     private var visibility: AppVisibility? = null
     private var collecting = false
     private var fixesSeen = 0L
@@ -148,9 +151,11 @@ class DetectionService : Service() {
 
         scope.launch {
             val cameraStore = store ?: CameraStore.open(applicationContext).also { store = it }
-            val pipeline = DetectionPipeline(cameraStore.cameraQuery())
-            // The driver's blocks must be in force before the first query, not after.
+            // The driver's blocks and active SPECS corridors must be in force before the first query.
             cameraStore.refreshOverrides()
+            cameraStore.refreshSections()
+            val pipeline = DetectionPipeline(cameraStore.cameraQuery(), cameraStore.sectionQuery())
+            activePipeline = pipeline
             publishState(cameraStore)
             val source = locationSource(this@DetectionService)
 
@@ -176,15 +181,23 @@ class DetectionService : Service() {
     private fun publishHazards(
         hazards: List<com.speedcam.core.detect.Hazard>,
         fix: Fix,
+        sectionEvent: SectionEvent?,
     ) {
         val views = hazards.toHazardViews()
         DetectionState.update { previous ->
+            val nextSection =
+                when {
+                    sectionEvent != null -> sectionEvent.toSectionUiState()
+                    previous.activeSection?.completed == true -> null
+                    else -> previous.activeSection
+                }
             previous.copy(
                 running = true,
                 hasFix = true,
                 speedKmh = fix.speedKmh,
                 nearest = views.getOrNull(0),
                 second = views.getOrNull(1),
+                activeSection = nextSection,
             )
         }
     }
@@ -236,7 +249,8 @@ class DetectionService : Service() {
         // against itself.
         lastAcceptedFix = result.fix
 
-        publishHazards(result.hazards, fix)
+        publishHazards(result.hazards, fix, result.sectionEvent)
+        result.sectionEvent?.let { handleSectionEvent(it, profile) }
 
         if (result.hazards.isNotEmpty()) {
             Log.i(
@@ -305,12 +319,59 @@ class DetectionService : Service() {
             }
     }
 
+    private fun handleSectionEvent(
+        event: SectionEvent,
+        profile: AlertProfile,
+    ) {
+        when (event) {
+            is SectionEvent.Entered -> {
+                Log.i(
+                    TAG,
+                    "SPECS zone entered: limit=${event.section.limitKmh} km/h, " +
+                        "length=${event.section.lengthM.toInt()} m",
+                )
+                notificationState = getString(R.string.notification_section_entered, event.section.limitKmh)
+            }
+
+            is SectionEvent.Exited -> {
+                Log.i(
+                    TAG,
+                    "SPECS zone exited: avg=${event.averageKmh.toInt()} km/h, " +
+                        "limit=${event.section.limitKmh} km/h, duration=${event.durationMillis} ms",
+                )
+                notificationState =
+                    getString(
+                        R.string.notification_section_exited,
+                        event.averageKmh.toInt(),
+                        event.section.limitKmh,
+                    )
+            }
+
+            is SectionEvent.Aborted -> {
+                Log.i(TAG, "SPECS zone aborted: reason=${event.reason}")
+                return
+            }
+
+            is SectionEvent.Progress -> return
+        }
+
+        runCatching {
+            media.setOutputMode(currentOutputMode())
+            media.playSectionEvent(event, profile)
+        }.onFailure {
+            Log.w(TAG, "Media layer failed on section event; detection continues: ${it.message}")
+        }
+    }
+
     private fun refreshNotification() {
         when (gpsWatchdog.evaluate(System.currentTimeMillis())) {
             GpsStatus.LOST -> {
                 // Logged once per loss rather than once per tick, which would be a line a second.
                 if (notificationState != gpsLostText) Log.w(TAG, "GPS signal lost.")
                 notificationState = gpsLostText
+                if (activePipeline?.onGpsLost() != null) {
+                    DetectionState.update { it.copy(activeSection = null) }
+                }
             }
 
             GpsStatus.RECOVERED -> {

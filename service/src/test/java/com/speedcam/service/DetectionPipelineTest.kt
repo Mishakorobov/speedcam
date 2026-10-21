@@ -4,10 +4,14 @@ import com.speedcam.core.detect.AlertChannel
 import com.speedcam.core.detect.AlertContext
 import com.speedcam.core.detect.AlertProfile
 import com.speedcam.core.detect.CameraQuery
+import com.speedcam.core.detect.SectionEvent
+import com.speedcam.core.detect.SectionQuery
+import com.speedcam.core.detect.SectionRecord
 import com.speedcam.core.detect.WarnTime
 import com.speedcam.core.geo.LatLon
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -117,5 +121,49 @@ class DetectionPipelineTest {
 
         assertTrue(result.hazards.isEmpty())
         assertTrue(result.decisions.isEmpty())
+    }
+
+    @Test
+    fun `an average-speed corridor emits Entered and Exited through the pipeline`() {
+        val start = ServiceFixtures.ORIGIN
+        val end = ServiceFixtures.offset(start, metresNorth = 900.0, metresEast = 0.0)
+        val section = SectionRecord(from = start, to = end, limitKmh = 90)
+        val specsPipeline =
+            DetectionPipeline(
+                query = CameraQuery { emptyList() },
+                sections = SectionQuery { listOf(section) },
+            )
+
+        val approachFix =
+            ServiceFixtures.fix(
+                position = ServiceFixtures.offset(start, metresNorth = -200.0, metresEast = 0.0),
+                headingDeg = 0.0,
+                speedKmh = 90.0,
+                timestampMillis = 0L,
+            )
+        val initial = specsPipeline.process(approachFix, profile, previous = null)
+        assertNull(initial.sectionEvent)
+
+        val enterFix =
+            ServiceFixtures.fix(
+                position = start,
+                headingDeg = 0.0,
+                speedKmh = 90.0,
+                timestampMillis = 8_000L,
+            )
+        val first = specsPipeline.process(enterFix, profile, previous = initial.fix)
+        assertTrue(first.sectionEvent is SectionEvent.Entered)
+        assertTrue(first.hasAlerts)
+
+        val exitFix =
+            ServiceFixtures.fix(
+                position = end,
+                headingDeg = 0.0,
+                speedKmh = 90.0,
+                timestampMillis = 44_000L,
+            )
+        val second = specsPipeline.process(exitFix, profile, previous = first.fix)
+        assertTrue(second.sectionEvent is SectionEvent.Exited)
+        assertTrue(second.hasAlerts)
     }
 }

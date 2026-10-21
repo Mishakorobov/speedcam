@@ -43,12 +43,17 @@ class PbfImporter {
         return collectNodes(file, endpoints)
     }
 
-    /** An average-speed relation, resolved against the second pass. */
+    /**
+     * An average-speed relation, resolved against the second pass.
+     *
+     * [limitKmh] may be null on the relation itself when the mapper put `maxspeed` on the
+     * member camera nodes instead; the second pass falls back to the endpoint cameras' limits.
+     */
     private data class RelationRef(
         val id: Long,
         val fromRef: Long,
         val toRef: Long,
-        val limitKmh: Int,
+        val limitKmh: Int?,
     )
 
     private class Endpoints(
@@ -67,91 +72,142 @@ class PbfImporter {
                     if (tags["type"] != "enforcement") return@forEach
                     if (tags["enforcement"] != "average_speed") return@forEach
 
-                    val limit = OverpassMapper.parseLimit(tags["maxspeed"]) ?: return@forEach
+                    val limit = OverpassMapper.parseLimit(tags["maxspeed"])
+                    val pair = extractEndpointNodes(relation, context) ?: return@forEach
 
-                    var from = -1L
-                    var to = -1L
-                    for (i in relation.roles.indices) {
-                        // Only node members carry coordinates; way members would need geometry
-                        // resolution, which this importer does not do.
-                        if (relation.types.getOrNull(i) != TYPE_NODE) continue
-
-                        // `roles` holds string-table indices, not the role text itself.
-                        val role = context.strings.getOrNull(relation.roles[i])
-                        if (role == ROLE_FROM) from = relation.memberIds[i]
-                        if (role == ROLE_TO) to = relation.memberIds[i]
-                    }
-
-                    if (from <= 0 || to <= 0) return@forEach
-                    relations += RelationRef(relation.id, from, to, limit)
-                    nodeRefs += from
-                    nodeRefs += to
+                    relations += RelationRef(relation.id, pair.first, pair.second, limit)
+                    nodeRefs += pair.first
+                    nodeRefs += pair.second
                 }
             }
         }
         return Endpoints(relations, nodeRefs)
     }
 
+    /**
+     * Finds the entry and exit node ids of an `average_speed` relation.
+     *
+     * Prefers explicit `from` and `to` roles; falls back to `device` node members when the
+     * mapper recorded the two cameras as devices rather than endpoints.
+     */
+    private fun extractEndpointNodes(
+        relation: PbfReader.Relation,
+        context: PbfReader.Context,
+    ): Pair<Long, Long>? {
+        var from = -1L
+        var to = -1L
+        val devices = mutableListOf<Long>()
+
+        for (i in relation.roles.indices) {
+            // Only node members carry coordinates; way members would need geometry
+            // resolution, which this importer does not do.
+            if (relation.types.getOrNull(i) != TYPE_NODE) continue
+
+            // `roles` holds string-table indices, not the role text itself.
+            val role = context.strings.getOrNull(relation.roles[i])
+            val memberId = relation.memberIds[i]
+            when (role) {
+                ROLE_FROM -> from = memberId
+                ROLE_TO -> to = memberId
+                ROLE_DEVICE, "" -> devices += memberId
+            }
+        }
+
+        if (from <= 0 && devices.isNotEmpty()) from = devices.first()
+        if (to <= 0 && devices.size >= 2) to = devices.last()
+        if (from <= 0 || to <= 0 || from == to) return null
+        return from to to
+    }
+
     private fun collectNodes(
         file: File,
         endpoints: Endpoints,
     ): Result {
-        val cameras = mutableListOf<Camera>()
-        val coords = HashMap<Long, LatLon>(endpoints.nodeRefs.size.coerceAtLeast(16))
+        val collector =
+            NodeCollector(
+                wanted = endpoints.nodeRefs,
+                coords = HashMap(endpoints.nodeRefs.size.coerceAtLeast(16)),
+                nodeLimits = HashMap(endpoints.nodeRefs.size.coerceAtLeast(16)),
+                cameras = mutableListOf(),
+            )
         var nodesScanned = 0L
         var blobsRead = 0L
         var truncated = false
 
         PbfReader(file).use { reader ->
             reader.scan { group, context ->
-                val dense = group.dense
-                val wanted = endpoints.nodeRefs
-
-                if (dense != null) {
-                    for (d in dense) {
-                        nodesScanned += d.ids.size
-                        val keys = d.keysVals
-                        var cursor = 0
-                        for (i in d.ids.indices) {
-                            val id = d.ids[i]
-                            if (id in wanted) {
-                                coords[id] = LatLon(context.latitude(d.lat[i]), context.longitude(d.lon[i]))
-                            }
-
-                            val tags = context.tagsOf(keys, cursor)
-                            cursor = tags.next
-                            if (tags.isCamera) {
-                                cameras += context.toCamera(id, d.lat[i], d.lon[i], tags.map)
-                            }
-                        }
-                    }
-                }
-
-                group.nodes?.forEach { node ->
-                    nodesScanned++
-                    if (node.id in wanted) {
-                        coords[node.id] = LatLon(context.latitude(node.lat), context.longitude(node.lon))
-                    }
-                    val tags = context.tagsOf(node.keysVals)
-                    if (tags.isCamera) {
-                        cameras += context.toCamera(node.id, node.lat, node.lon, tags.map)
-                    }
-                }
+                group.dense?.let { collector.addDense(it, context) }
+                group.nodes?.forEach { node -> collector.addNode(node, context) }
             }
             nodesScanned = reader.nodeCount
             blobsRead = reader.blobsRead
             truncated = reader.truncated
         }
 
-        val sections =
-            endpoints.relations.mapNotNull { rel ->
-                val from = coords[rel.fromRef] ?: return@mapNotNull null
-                val to = coords[rel.toRef] ?: return@mapNotNull null
-                SectionRecord(from = from, to = to, limitKmh = rel.limitKmh)
-            }
-
-        return Result(cameras, sections, nodesScanned, blobsRead, truncated)
+        val sections = resolveSections(endpoints, collector.coords, collector.nodeLimits)
+        return Result(collector.cameras, sections, nodesScanned, blobsRead, truncated)
     }
+
+    private class NodeCollector(
+        val wanted: Set<Long>,
+        val coords: HashMap<Long, LatLon>,
+        val nodeLimits: HashMap<Long, Int>,
+        val cameras: MutableList<Camera>,
+    ) {
+        fun addDense(
+            dense: List<PbfReader.DenseNodes>,
+            context: PbfReader.Context,
+        ) {
+            dense.forEach { d -> scanDenseBlock(d, context) }
+        }
+
+        private fun scanDenseBlock(
+            d: PbfReader.DenseNodes,
+            context: PbfReader.Context,
+        ) {
+            val keys = d.keysVals
+            var cursor = 0
+            for (i in d.ids.indices) {
+                val id = d.ids[i]
+                val tags = context.tagsOf(keys, cursor)
+                cursor = tags.next
+
+                if (id in wanted) {
+                    coords[id] = LatLon(context.latitude(d.lat[i]), context.longitude(d.lon[i]))
+                    OverpassMapper.parseLimit(tags.map["maxspeed"])?.let { nodeLimits[id] = it }
+                }
+                if (tags.isCamera) {
+                    cameras += context.toCamera(id, d.lat[i], d.lon[i], tags.map)
+                }
+            }
+        }
+
+        fun addNode(
+            node: PbfReader.SimpleNode,
+            context: PbfReader.Context,
+        ) {
+            val tags = context.tagsOf(node.keysVals)
+            if (node.id in wanted) {
+                coords[node.id] = LatLon(context.latitude(node.lat), context.longitude(node.lon))
+                OverpassMapper.parseLimit(tags.map["maxspeed"])?.let { nodeLimits[node.id] = it }
+            }
+            if (tags.isCamera) {
+                cameras += context.toCamera(node.id, node.lat, node.lon, tags.map)
+            }
+        }
+    }
+
+    private fun resolveSections(
+        endpoints: Endpoints,
+        coords: Map<Long, LatLon>,
+        nodeLimits: Map<Long, Int>,
+    ): List<SectionRecord> =
+        endpoints.relations.mapNotNull { rel ->
+            val from = coords[rel.fromRef] ?: return@mapNotNull null
+            val to = coords[rel.toRef] ?: return@mapNotNull null
+            val limit = rel.limitKmh ?: nodeLimits[rel.fromRef] ?: nodeLimits[rel.toRef] ?: return@mapNotNull null
+            SectionRecord(from = from, to = to, limitKmh = limit)
+        }
 
     /** Decoded tags for one node, with the cursor position after them. */
     class NodeTags(
@@ -165,6 +221,7 @@ class PbfImporter {
         private const val TYPE_NODE = 0
         private const val ROLE_FROM = "from"
         private const val ROLE_TO = "to"
+        private const val ROLE_DEVICE = "device"
 
         private const val KEY_HIGHWAY = "highway"
         private const val VALUE_SPEED_CAMERA = "speed_camera"

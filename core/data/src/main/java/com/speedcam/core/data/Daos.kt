@@ -9,6 +9,7 @@ import com.speedcam.core.detect.Camera
 import com.speedcam.core.detect.CameraKind
 import com.speedcam.core.detect.CameraQuery
 import com.speedcam.core.detect.CameraSource
+import com.speedcam.core.detect.SectionRecord
 import com.speedcam.core.geo.BoundingBox
 import com.speedcam.core.geo.LatLon
 import kotlinx.coroutines.flow.Flow
@@ -228,4 +229,29 @@ object CameraMappers {
         ordinal: Int,
         fallback: T,
     ): T = values.getOrElse(ordinal) { fallback }
+}
+
+/** Maps [SectionEntity] rows into the pure domain [SectionRecord] consumed by [com.speedcam.core.detect.AverageSpeedTracker]. */
+object SectionMappers {
+    fun toDomainOrNull(e: SectionEntity): SectionRecord? {
+        if (e.limitKmh <= 0) return null
+        return SectionRecord(
+            from = LatLon(e.fromLat, e.fromLon),
+            to = LatLon(e.toLat, e.toLon),
+            limitKmh = e.limitKmh,
+            active = e.active != 0,
+        )
+    }
+
+    fun toDomainList(entities: List<SectionEntity>): List<SectionRecord> = entities.mapNotNull(::toDomainOrNull)
+
+    fun toEntity(s: SectionRecord): SectionEntity =
+        SectionEntity(
+            fromLat = s.from.lat,
+            fromLon = s.from.lon,
+            toLat = s.to.lat,
+            toLon = s.to.lon,
+            limitKmh = s.limitKmh,
+            active = if (s.active) 1 else 0,
+        )
 }

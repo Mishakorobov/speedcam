@@ -25,12 +25,14 @@ object ServiceFixtures {
         speedKmh: Double = 0.0,
         timestampMillis: Long = 1_700_000_000_000L,
         accuracyM: Float = 5f,
+        providerTag: String? = Fix.FUSED_TAG,
     ) = Fix(
         position = position,
         timestampMillis = timestampMillis,
         accuracyM = accuracyM,
         speedMs = (speedKmh / 3.6).toFloat(),
         headingDeg = headingDeg,
+        providerTag = providerTag,
     )
 
     fun camera(

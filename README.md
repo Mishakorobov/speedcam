@@ -22,7 +22,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 
 ## Status
 
-**Stage 6 of 9 — HUD, camera list and settings, verified end to end on a real device.**
+**Stage 7 of 9 — Average-speed corridor monitoring (SPECS), tracking, HUD integration and offline import.**
 
 | Stage | | Status |
 | --- | --- | --- |
@@ -33,7 +33,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 | 4 | Foreground service and location pipeline | **done and verified on API 36** — fused provider with fallback, watchdogs, resurrection |
 | 5 | Sound, gager tone, speech, vibration | **done and verified on API 36** — tone plays, vibration fires, cadence throttles correctly |
 | 6 | HUD, camera list, settings | **done and verified on API 36** — overlay window, 11,430-camera browser, presets and transport |
-| 7 | Average-speed zones | import path ready; runtime computation pending |
+| 7 | Average-speed zones | **done** — corridor entry/exit state machine, odometer path integration, live HUD excess calculation, speech and tone alerts |
 | 8 | Scheduled database updates | **done** — `update-osm.bat`, change-detecting and self-verifying |
 
 ## Modules
@@ -387,11 +387,12 @@ Behaviour worth knowing:
 | `DatabaseWriterTest` | 8 | Row round-trips, source partitioning, transactions |
 | `OverpassMapperTest` | 7 | `maxspeed` / `direction` parsing |
 | `BoundingBoxTest` | 6 | Tiling, bounds, degenerate boxes |
-| `PbfReaderTest` | 12 | Varints, zigzag, dense-node deltas, coordinate scaling, relations, truncation |
+| `AverageSpeedTrackerTest` | 9 | SPECS entry gate, progress integration, exit v_avg, timeout/off-route/GPS loss aborts |
+| `PbfReaderTest` | 16 | Varints, zigzag, dense-node deltas, coordinate scaling, relations, truncation |
 | `PbfImporterTest` | 4 | Camera extraction, two-pass relation resolution, dangling references |
 | `SchemaParityTest` | 4 | Importer DDL against Room's exported schema |
 | `ImportPipelineTest` | 3 | End-to-end fetch → parse → merge → write against a local stub |
-| **Total** | **135** | |
+| **Total** | **148** | |
 
 ## Design notes
 

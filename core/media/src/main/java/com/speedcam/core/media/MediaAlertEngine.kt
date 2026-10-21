@@ -6,7 +6,9 @@ import android.media.AudioManager
 import android.util.Log
 import com.speedcam.core.detect.AlertChannel
 import com.speedcam.core.detect.AlertDecision
+import com.speedcam.core.detect.AlertProfile
 import com.speedcam.core.detect.Hazard
+import com.speedcam.core.detect.SectionEvent
 
 /**
  * Turns an [AlertDecision] into sound, speech and vibration.
@@ -156,6 +158,41 @@ class MediaAlertEngine(
         // second for as long as a camera was in range, which is a drone, not a warning.
         val audibleAlert = outcome.beep || outcome.speech
         if (VibrationPolicy.shouldVibrate(AlertChannel.VIBRATION in decision.channels, isPrimary) && audibleAlert) {
+            vibration.vibrate()
+        }
+    }
+
+    /**
+     * Announces an average-speed corridor transition ([SectionEvent.Entered] or [SectionEvent.Exited]).
+     *
+     * Entry and exit are one-shot edge events rather than per-fix repeats, so they bypass the
+     * approach cadence latch while still honouring call suppression, output routing, and the
+     * profile's voice/beep/vibration switches.
+     */
+    fun playSectionEvent(
+        event: SectionEvent,
+        profile: AlertProfile,
+    ) {
+        if (callState.suppresses()) return
+
+        val plan =
+            when (event) {
+                is SectionEvent.Entered -> SpeechPlanner.zoneEntered(event.section.limitKmh)
+                is SectionEvent.Exited -> SpeechPlanner.zoneExited(event.averageKmh, event.section.limitKmh)
+                else -> return
+            }
+
+        if (profile.voice) {
+            Log.i(
+                TAG,
+                "Section speech planned: ${plan.phrases.joinToString { it.name }} " +
+                    "(limit=${plan.limitKmh}, avg=${plan.achievedAverageKmh})",
+            )
+        }
+        if (profile.beepEnabled && mode.allowsTones) {
+            gager.play(0.0, mode)
+        }
+        if (profile.vibro) {
             vibration.vibrate()
         }
     }

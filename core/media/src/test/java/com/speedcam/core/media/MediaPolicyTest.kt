@@ -198,4 +198,26 @@ class MediaPolicyTest {
         }
         assertTrue(refused, "a negative distance is a bug upstream, not a phrase to speak")
     }
+
+    @Test
+    fun `average speed zone entry announces the limit`() {
+        val plan = SpeechPlanner.zoneEntered(90)
+        assertEquals(listOf(Phrase.AVERAGE_SPEED_ZONE_ENTERED, Phrase.SPEED_LIMIT), plan.phrases)
+        assertEquals(90, plan.limitKmh)
+        assertFalse(plan.warnsExcess)
+    }
+
+    @Test
+    fun `average speed zone exit announces the achieved average and warns on excess`() {
+        val compliant = SpeechPlanner.zoneExited(averageKmh = 88.4, limitKmh = 90)
+        assertEquals(listOf(Phrase.AVERAGE_SPEED_ZONE_EXIT), compliant.phrases)
+        assertEquals(88, compliant.achievedAverageKmh)
+        assertEquals(90, compliant.limitKmh)
+        assertFalse(compliant.warnsExcess)
+
+        val speeding = SpeechPlanner.zoneExited(averageKmh = 105.2, limitKmh = 90)
+        assertEquals(listOf(Phrase.AVERAGE_SPEED_ZONE_EXIT, Phrase.DECREASE_SPEED), speeding.phrases)
+        assertEquals(105, speeding.achievedAverageKmh)
+        assertTrue(speeding.warnsExcess)
+    }
 }
