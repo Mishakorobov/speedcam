@@ -60,7 +60,7 @@ object BluetoothRoute {
         return devices.isNotEmpty()
     }
 
-    private fun canQueryConnections(context: Context): Boolean =
+    internal fun canQueryConnections(context: Context): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
             PackageManager.PERMISSION_GRANTED

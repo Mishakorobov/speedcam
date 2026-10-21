@@ -26,6 +26,7 @@ object ServiceController {
      * is simply refused outright.
      */
     fun start(context: Context) {
+        ProfileStore(context).isEnabled = true
         val intent = Intent(context, DetectionService::class.java).setAction(DetectionService.ACTION_START)
 
         val started =
@@ -53,6 +54,7 @@ object ServiceController {
         }
         Resurrection.cancel(context)
         ProfileStore(context).isEnabled = false
+        DetectionState.update { it.copy(running = false) }
         Log.i(TAG, "Detection stopped.")
     }
 

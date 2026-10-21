@@ -1,6 +1,7 @@
 package com.speedcam.app
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -76,6 +77,7 @@ import com.speedcam.core.data.HazardReportType
 import com.speedcam.core.data.contracam.ContraCamArchiveSync
 import com.speedcam.core.detect.Camera
 import com.speedcam.core.geo.LatLon
+import com.speedcam.service.CarBluetoothManager
 import com.speedcam.service.DetectionState
 import com.speedcam.service.ProfileStore
 import com.speedcam.service.ServiceController
@@ -102,6 +104,11 @@ class MainActivity : ComponentActivity() {
 
     private var isContraCamSyncing by mutableStateOf(false)
     private var useContraCamDb by mutableStateOf(false)
+    private var autoStartOnBluetooth by mutableStateOf(false)
+    private var autoStopOnBluetooth by mutableStateOf(true)
+    private var bluetoothDeviceFilter by mutableStateOf("")
+    private var bluetoothDeviceFilterName by mutableStateOf("")
+    private var bluetoothStopDelaySeconds by mutableStateOf(20)
 
     /** Tracks the fine-location grant, which background location cannot be requested without. */
     private var fineLocationGranted = false
@@ -124,6 +131,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         useContraCamDb = profiles.useContraCamDb
+        autoStartOnBluetooth = profiles.autoStartOnBluetooth
+        autoStopOnBluetooth = profiles.autoStopOnBluetooth
+        bluetoothDeviceFilter = profiles.bluetoothDeviceFilter
+        bluetoothDeviceFilterName = profiles.bluetoothDeviceFilterName
+        bluetoothStopDelaySeconds = profiles.bluetoothStopDelaySeconds
         refreshCameraList()
         requestLocationThenStart()
 
@@ -164,6 +176,13 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        val bondedDevices =
+            runCatching {
+                CarBluetoothManager.getBondedDevices(this).map {
+                    it.address to (runCatching { it.name }.getOrNull() ?: it.address)
+                }
+            }.getOrDefault(emptyList())
+
         SpeedCamTheme {
             Surface(modifier = Modifier.fillMaxSize()) {
                 AppShell(
@@ -179,6 +198,12 @@ class MainActivity : ComponentActivity() {
                             isSyncingReports = isSyncingReports,
                             isContraCamSyncing = isContraCamSyncing,
                             useContraCamDb = useContraCamDb,
+                            autoStartOnBluetooth = autoStartOnBluetooth,
+                            autoStopOnBluetooth = autoStopOnBluetooth,
+                            bluetoothDeviceFilter = bluetoothDeviceFilter,
+                            bluetoothDeviceFilterName = bluetoothDeviceFilterName,
+                            bluetoothStopDelaySeconds = bluetoothStopDelaySeconds,
+                            pairedBluetoothDevices = bondedDevices,
                         ),
                     actions = buildShellActions(),
                 )
@@ -212,6 +237,24 @@ class MainActivity : ComponentActivity() {
             onToggleHud = { HudOverlayManager.toggle(this) },
             onContraCamDbChange = ::toggleContraCamDb,
             onSyncContraCam = ::syncContraCam,
+            onAutoStartOnBluetoothChange = {
+                autoStartOnBluetooth = it
+                profiles.autoStartOnBluetooth = it
+            },
+            onAutoStopOnBluetoothChange = {
+                autoStopOnBluetooth = it
+                profiles.autoStopOnBluetooth = it
+            },
+            onBluetoothDeviceFilterChange = { address, name ->
+                bluetoothDeviceFilter = address
+                bluetoothDeviceFilterName = name
+                profiles.bluetoothDeviceFilter = address
+                profiles.bluetoothDeviceFilterName = name
+            },
+            onBluetoothStopDelaySecondsChange = {
+                bluetoothStopDelaySeconds = it
+                profiles.bluetoothStopDelaySeconds = it
+            },
         )
 
     private fun toggleContraCamDb(enabled: Boolean) {
@@ -266,6 +309,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        autoStartOnBluetooth = profiles.autoStartOnBluetooth
+        autoStopOnBluetooth = profiles.autoStopOnBluetooth
+        bluetoothDeviceFilter = profiles.bluetoothDeviceFilter
+        bluetoothDeviceFilterName = profiles.bluetoothDeviceFilterName
+        bluetoothStopDelaySeconds = profiles.bluetoothStopDelaySeconds
         refreshCameraList()
         HudOverlayManager.sync(this)
         if (profiles.isEnabled && fineLocationGranted) ServiceController.start(this)
@@ -426,6 +474,12 @@ private data class ShellState(
     val isSyncingReports: Boolean = false,
     val isContraCamSyncing: Boolean = false,
     val useContraCamDb: Boolean = false,
+    val autoStartOnBluetooth: Boolean = false,
+    val autoStopOnBluetooth: Boolean = true,
+    val bluetoothDeviceFilter: String = "",
+    val bluetoothDeviceFilterName: String = "",
+    val bluetoothStopDelaySeconds: Int = 20,
+    val pairedBluetoothDevices: List<Pair<String, String>> = emptyList(),
 )
 
 /** What the shell does, one callback per screen-level action. */
@@ -445,6 +499,10 @@ private data class ShellActions(
     val onToggleHud: () -> Unit,
     val onContraCamDbChange: (Boolean) -> Unit,
     val onSyncContraCam: () -> Unit,
+    val onAutoStartOnBluetoothChange: (Boolean) -> Unit,
+    val onAutoStopOnBluetoothChange: (Boolean) -> Unit,
+    val onBluetoothDeviceFilterChange: (address: String, name: String) -> Unit,
+    val onBluetoothStopDelaySecondsChange: (Int) -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -556,6 +614,75 @@ private fun AppBottomBar(
     }
 }
 
+private fun buildSettingsState(state: ShellState): SettingsState {
+    val profiles = state.profiles
+    return SettingsState(
+        enabled = profiles.isEnabled,
+        quickSetting = profiles.quickSetting,
+        captureDistanceKm = profiles.captureDistanceKm,
+        transport = profiles.transport,
+        hudEnabled = profiles.hudEnabled,
+        hudAutoHide = profiles.hudAutoHide,
+        hudPermissionGranted = state.hudPermissionGranted,
+        outputMode = profiles.outputMode,
+        silentDuringCall = profiles.silentDuringCall,
+        cameraCount = state.ui.cameraCount,
+        sectionCount = state.ui.sectionCount,
+        databaseBuiltAt = state.ui.databaseBuiltAt,
+        dataSourceNote = DATA_SOURCE_NOTE,
+        autoUpdateEnabled = profiles.autoUpdateEnabled,
+        lastUpdateCheckAt = profiles.lastUpdateCheckAt,
+        lastUpdateStatus = profiles.lastUpdateStatus,
+        isUpdating = state.isUpdating,
+        pendingReportCount = state.pendingReportCount,
+        lastHazardSyncAt = profiles.lastHazardSyncAt,
+        lastHazardSyncStatus = profiles.lastHazardSyncStatus,
+        isSyncingReports = state.isSyncingReports,
+        useContraCamDb = state.useContraCamDb,
+        lastContraCamSyncAt = profiles.lastContraCamSyncAt,
+        lastContraCamStatus = profiles.lastContraCamStatus,
+        contraCamCameraCount = profiles.contraCamCameraCount,
+        isContraCamSyncing = state.isContraCamSyncing,
+        autoStartOnBluetooth = state.autoStartOnBluetooth,
+        autoStopOnBluetooth = state.autoStopOnBluetooth,
+        bluetoothDeviceFilter = state.bluetoothDeviceFilter,
+        bluetoothDeviceFilterName = state.bluetoothDeviceFilterName,
+        bluetoothStopDelaySeconds = state.bluetoothStopDelaySeconds,
+        pairedBluetoothDevices = state.pairedBluetoothDevices,
+    )
+}
+
+private fun buildSettingsActions(
+    context: Context,
+    profiles: ProfileStore,
+    actions: ShellActions,
+): SettingsActions =
+    SettingsActions(
+        onEnabledChange = actions.onEnableChange,
+        onQuickSettingChange = { profiles.quickSetting = it },
+        onCaptureDistanceChange = { profiles.captureDistanceKm = it },
+        onTransportChange = { profiles.transport = it },
+        onHudEnabledChange = { HudOverlayManager.setHudEnabled(context, it) },
+        onHudAutoHideChange = {
+            profiles.hudAutoHide = it
+            HudOverlayManager.sync(context)
+        },
+        onRequestHudPermission = actions.onRequestHudPermission,
+        onResetHudPosition = actions.onResetHudPosition,
+        onOutputModeChange = { profiles.outputMode = it },
+        onSilentDuringCallChange = { profiles.silentDuringCall = it },
+        onAutoUpdateChange = actions.onAutoUpdateChange,
+        onCheckForUpdates = actions.onCheckForUpdates,
+        onSyncHazardOutbox = actions.onSyncHazardOutbox,
+        onClearSyncedReports = actions.onClearSyncedReports,
+        onContraCamDbChange = actions.onContraCamDbChange,
+        onSyncContraCam = actions.onSyncContraCam,
+        onAutoStartOnBluetoothChange = actions.onAutoStartOnBluetoothChange,
+        onAutoStopOnBluetoothChange = actions.onAutoStopOnBluetoothChange,
+        onBluetoothDeviceFilterChange = actions.onBluetoothDeviceFilterChange,
+        onBluetoothStopDelaySecondsChange = actions.onBluetoothStopDelaySecondsChange,
+    )
+
 @Composable
 private fun SettingsTab(
     state: ShellState,
@@ -563,59 +690,9 @@ private fun SettingsTab(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val profiles = state.profiles
     SettingsScreen(
-        state =
-            SettingsState(
-                enabled = profiles.isEnabled,
-                quickSetting = profiles.quickSetting,
-                captureDistanceKm = profiles.captureDistanceKm,
-                transport = profiles.transport,
-                hudEnabled = profiles.hudEnabled,
-                hudAutoHide = profiles.hudAutoHide,
-                hudPermissionGranted = state.hudPermissionGranted,
-                outputMode = profiles.outputMode,
-                silentDuringCall = profiles.silentDuringCall,
-                cameraCount = state.ui.cameraCount,
-                sectionCount = state.ui.sectionCount,
-                databaseBuiltAt = state.ui.databaseBuiltAt,
-                dataSourceNote = DATA_SOURCE_NOTE,
-                autoUpdateEnabled = profiles.autoUpdateEnabled,
-                lastUpdateCheckAt = profiles.lastUpdateCheckAt,
-                lastUpdateStatus = profiles.lastUpdateStatus,
-                isUpdating = state.isUpdating,
-                pendingReportCount = state.pendingReportCount,
-                lastHazardSyncAt = profiles.lastHazardSyncAt,
-                lastHazardSyncStatus = profiles.lastHazardSyncStatus,
-                isSyncingReports = state.isSyncingReports,
-                useContraCamDb = state.useContraCamDb,
-                lastContraCamSyncAt = profiles.lastContraCamSyncAt,
-                lastContraCamStatus = profiles.lastContraCamStatus,
-                contraCamCameraCount = profiles.contraCamCameraCount,
-                isContraCamSyncing = state.isContraCamSyncing,
-            ),
-        actions =
-            SettingsActions(
-                onEnabledChange = actions.onEnableChange,
-                onQuickSettingChange = { profiles.quickSetting = it },
-                onCaptureDistanceChange = { profiles.captureDistanceKm = it },
-                onTransportChange = { profiles.transport = it },
-                onHudEnabledChange = { HudOverlayManager.setHudEnabled(context, it) },
-                onHudAutoHideChange = {
-                    profiles.hudAutoHide = it
-                    HudOverlayManager.sync(context)
-                },
-                onRequestHudPermission = actions.onRequestHudPermission,
-                onResetHudPosition = actions.onResetHudPosition,
-                onOutputModeChange = { profiles.outputMode = it },
-                onSilentDuringCallChange = { profiles.silentDuringCall = it },
-                onAutoUpdateChange = actions.onAutoUpdateChange,
-                onCheckForUpdates = actions.onCheckForUpdates,
-                onSyncHazardOutbox = actions.onSyncHazardOutbox,
-                onClearSyncedReports = actions.onClearSyncedReports,
-                onContraCamDbChange = actions.onContraCamDbChange,
-                onSyncContraCam = actions.onSyncContraCam,
-            ),
+        state = buildSettingsState(state),
+        actions = buildSettingsActions(context, state.profiles, actions),
         modifier = modifier,
     )
 }

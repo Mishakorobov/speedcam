@@ -120,6 +120,7 @@ class DetectionService : Service() {
         adaptiveWatchdog.reset()
         store?.close()
         store = null
+        DetectionState.update { it.copy(running = false, hasFix = false) }
         super.onDestroy()
     }
 

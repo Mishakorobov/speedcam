@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Speed
@@ -82,6 +83,12 @@ data class SettingsState(
     val lastContraCamStatus: String? = null,
     val contraCamCameraCount: Int = 0,
     val isContraCamSyncing: Boolean = false,
+    val autoStartOnBluetooth: Boolean = false,
+    val autoStopOnBluetooth: Boolean = true,
+    val bluetoothDeviceFilter: String = "",
+    val bluetoothDeviceFilterName: String = "",
+    val bluetoothStopDelaySeconds: Int = 20,
+    val pairedBluetoothDevices: List<Pair<String, String>> = emptyList(),
 )
 
 /** The settings screen's writes, bundled for reviewability. */
@@ -102,6 +109,10 @@ data class SettingsActions(
     val onClearSyncedReports: () -> Unit = {},
     val onContraCamDbChange: (Boolean) -> Unit = {},
     val onSyncContraCam: () -> Unit = {},
+    val onAutoStartOnBluetoothChange: (Boolean) -> Unit = {},
+    val onAutoStopOnBluetoothChange: (Boolean) -> Unit = {},
+    val onBluetoothDeviceFilterChange: (address: String, name: String) -> Unit = { _, _ -> },
+    val onBluetoothStopDelaySecondsChange: (Int) -> Unit = {},
 )
 
 /**
@@ -124,6 +135,7 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         DetectionSectionCard(state = state, actions = actions)
+        BluetoothAutomationSectionCard(state = state, actions = actions)
         AudioSectionCard(state = state, actions = actions)
         HudSectionCard(state = state, actions = actions)
         DatabaseSyncSectionCard(state = state, actions = actions)
@@ -228,6 +240,101 @@ private fun AudioOutputSelector(
                 selected = mode == selected,
                 onClick = { onChange(mode) },
                 label = { Text(label) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun BluetoothAutomationSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "Car Bluetooth Automation",
+        icon = Icons.Default.DirectionsCar,
+    ) {
+        SettingsToggleItem(
+            title = "Auto-Start on Car Bluetooth",
+            subtitle = "Automatically start detection and HUD when car Bluetooth connects",
+            checked = state.autoStartOnBluetooth,
+            onCheckedChange = actions.onAutoStartOnBluetoothChange,
+        )
+
+        SettingsToggleItem(
+            title = "Auto-Stop on Disconnect",
+            subtitle = "Automatically stop detection and hide HUD when car Bluetooth disconnects",
+            checked = state.autoStopOnBluetooth,
+            onCheckedChange = actions.onAutoStopOnBluetoothChange,
+        )
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+        BluetoothGracePeriodSelector(
+            selectedSeconds = state.bluetoothStopDelaySeconds,
+            onChange = actions.onBluetoothStopDelaySecondsChange,
+        )
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+        BluetoothDeviceSelector(
+            currentFilter = state.bluetoothDeviceFilter,
+            pairedDevices = state.pairedBluetoothDevices,
+            onChange = actions.onBluetoothDeviceFilterChange,
+        )
+    }
+}
+
+@Composable
+private fun BluetoothGracePeriodSelector(
+    selectedSeconds: Int,
+    onChange: (Int) -> Unit,
+) {
+    Text("Disconnection Grace Period", style = MaterialTheme.typography.titleSmall)
+    Text(
+        text = "Delay before stopping detection to prevent restarts during engine cranking or brief drops.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    val delayOptions = listOf(0, 10, 20, 30, 60)
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(delayOptions) { seconds ->
+            val label = if (seconds == 0) "Immediate (0s)" else "${seconds}s"
+            FilterChip(
+                selected = selectedSeconds == seconds,
+                onClick = { onChange(seconds) },
+                label = { Text(label) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun BluetoothDeviceSelector(
+    currentFilter: String,
+    pairedDevices: List<Pair<String, String>>,
+    onChange: (address: String, name: String) -> Unit,
+) {
+    Text("Target Bluetooth Device", style = MaterialTheme.typography.titleSmall)
+    Text(
+        text = "Choose which car stereo or handsfree unit triggers auto-start and stop.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            FilterChip(
+                selected = currentFilter.isBlank(),
+                onClick = { onChange("", "") },
+                label = { Text("Any Car Audio (Default)") },
+            )
+        }
+        items(pairedDevices) { (address, name) ->
+            FilterChip(
+                selected = currentFilter.equals(address, ignoreCase = true),
+                onClick = { onChange(address, name) },
+                label = { Text(name) },
             )
         }
     }

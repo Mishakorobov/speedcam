@@ -139,6 +139,31 @@ class ProfileStore(
         get() = prefs.getInt(KEY_CONTRACAM_CAMERA_COUNT, 0)
         set(value) = prefs.edit().putInt(KEY_CONTRACAM_CAMERA_COUNT, value).apply()
 
+    /** Auto-start radar detection when car Bluetooth connects. */
+    var autoStartOnBluetooth: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_START_ON_BLUETOOTH, false)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_START_ON_BLUETOOTH, value).apply()
+
+    /** Auto-stop radar detection when car Bluetooth disconnects. */
+    var autoStopOnBluetooth: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_STOP_ON_BLUETOOTH, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_STOP_ON_BLUETOOTH, value).apply()
+
+    /** Bluetooth device filter MAC address or identifier; empty means any car audio device. */
+    var bluetoothDeviceFilter: String
+        get() = prefs.getString(KEY_BLUETOOTH_DEVICE_FILTER, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_BLUETOOTH_DEVICE_FILTER, value).apply()
+
+    /** User-friendly display name of the selected Bluetooth device filter. */
+    var bluetoothDeviceFilterName: String
+        get() = prefs.getString(KEY_BLUETOOTH_DEVICE_FILTER_NAME, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_BLUETOOTH_DEVICE_FILTER_NAME, value).apply()
+
+    /** Grace period in seconds to wait before stopping detection after BT disconnects. */
+    var bluetoothStopDelaySeconds: Int
+        get() = prefs.getInt(KEY_BLUETOOTH_STOP_DELAY_SECONDS, DEFAULT_STOP_DELAY_SECONDS)
+        set(value) = prefs.edit().putInt(KEY_BLUETOOTH_STOP_DELAY_SECONDS, value).apply()
+
     /**
      * The profile detection runs under right now.
      *
@@ -181,5 +206,11 @@ class ProfileStore(
         const val KEY_LAST_CONTRACAM_SYNC_AT = "lastContraCamSyncAt"
         const val KEY_LAST_CONTRACAM_STATUS = "lastContraCamStatus"
         const val KEY_CONTRACAM_CAMERA_COUNT = "contraCamCameraCount"
+        const val KEY_AUTO_START_ON_BLUETOOTH = "autoStartOnBluetooth"
+        const val KEY_AUTO_STOP_ON_BLUETOOTH = "autoStopOnBluetooth"
+        const val KEY_BLUETOOTH_DEVICE_FILTER = "bluetoothDeviceFilter"
+        const val KEY_BLUETOOTH_DEVICE_FILTER_NAME = "bluetoothDeviceFilterName"
+        const val KEY_BLUETOOTH_STOP_DELAY_SECONDS = "bluetoothStopDelaySeconds"
+        const val DEFAULT_STOP_DELAY_SECONDS = 20
     }
 }
