@@ -129,11 +129,16 @@ class HudOverlay(
     }
 
     private fun buildLayout(): FrameLayout {
+        val displayDensity =
+            Density(
+                density = context.resources.displayMetrics.density,
+                fontScale = context.resources.configuration.fontScale,
+            )
         val compose =
             ComposeView(context).apply {
                 setContent {
                     CompositionLocalProvider(
-                        LocalDensity provides Density(3f),
+                        LocalDensity provides displayDensity,
                         LocalLayoutDirection provides LayoutDirection.Ltr,
                     ) {
                         HudContent(

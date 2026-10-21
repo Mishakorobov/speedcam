@@ -34,6 +34,7 @@ data class AlertRequest(
     val wantsSound: Boolean,
     val wantsBeep: Boolean,
     val wantsSpeech: Boolean,
+    val wantsVibro: Boolean = false,
     /** How long the sound will last, used when the alert carries no bank sound. */
     val playbackMillis: Long = AlertCadence.MIN_INTERVAL_MS,
 )
@@ -43,6 +44,7 @@ data class CadenceOutcome(
     val sound: Boolean,
     val beep: Boolean,
     val speech: Boolean,
+    val vibro: Boolean = false,
     /** The next state to feed back in. */
     val next: AlertCadenceState,
 )
@@ -92,6 +94,7 @@ object AlertCadence {
                 sound = request.wantsSound,
                 beep = false,
                 speech = false,
+                vibro = false,
                 next = state,
             )
         }
@@ -107,6 +110,7 @@ object AlertCadence {
             sound = request.wantsSound,
             beep = request.wantsBeep,
             speech = request.wantsSpeech,
+            vibro = request.wantsVibro,
             next = AlertCadenceState(latched = true, reopensAtMillis = nowMillis + duration),
         )
     }

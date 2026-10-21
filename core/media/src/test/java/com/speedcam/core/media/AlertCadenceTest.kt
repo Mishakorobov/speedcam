@@ -18,11 +18,13 @@ class AlertCadenceTest {
         sound: Boolean = false,
         beep: Boolean = true,
         speech: Boolean = false,
+        vibro: Boolean = false,
         playbackMillis: Long = 800L,
     ) = AlertRequest(
         wantsSound = sound,
         wantsBeep = beep,
         wantsSpeech = speech,
+        wantsVibro = vibro,
         playbackMillis = playbackMillis,
     )
 
@@ -150,5 +152,36 @@ class AlertCadenceTest {
             audible <= 17,
             "200 fixes at 10 Hz produced $audible announcements; expected about 16",
         )
+    }
+
+    @Test
+    fun `vibration fires when latch is open even if audio is muted`() {
+        val outcome =
+            AlertCadence.advance(
+                AlertCadence.initial(),
+                0L,
+                request(sound = false, beep = false, speech = false, vibro = true),
+            )
+        assertFalse(outcome.beep)
+        assertFalse(outcome.speech)
+        assertTrue(outcome.vibro, "silent vibration alert must fire when latch is open")
+
+        // While latched closed, vibration is throttled
+        val latchedOutcome =
+            AlertCadence.advance(
+                outcome.next,
+                400L,
+                request(sound = false, beep = false, speech = false, vibro = true),
+            )
+        assertFalse(latchedOutcome.vibro, "vibration must not fire on every 1 Hz fix")
+
+        // Reopens after interval
+        val rearmedOutcome =
+            AlertCadence.advance(
+                outcome.next,
+                1_200L,
+                request(sound = false, beep = false, speech = false, vibro = true),
+            )
+        assertTrue(rearmedOutcome.vibro, "vibration fires again once cadence window reopens")
     }
 }

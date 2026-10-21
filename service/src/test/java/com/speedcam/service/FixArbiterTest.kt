@@ -38,35 +38,34 @@ class FixArbiterTest {
     }
 
     @Test
-    fun `a barely better fix is rejected at low speed`() {
-        // 1 second apart at rest: slack is the 5 m floor, so 12 m must not displace 10 m.
+    fun `a noisy jump is rejected at low speed`() {
+        // 1 second apart at rest: expansion is 5 m (5 m/s * 1 s), so candidate must be < 10 + 5 = 15 m.
+        // A jump to 20 m must be rejected.
+        val current = fix(accuracyM = 10f)
+        val candidate = fix(accuracyM = 20f, elapsedSeconds = 1)
+        assertSame(current, FixArbiter.better(current, candidate))
+    }
+
+    @Test
+    fun `a fresh fix within expanded uncertainty is accepted as time elapses`() {
+        // 1 second apart at rest: candidate at 12 m is within 10 + 5 = 15 m bound.
         val current = fix(accuracyM = 10f)
         val candidate = fix(accuracyM = 12f, elapsedSeconds = 1)
-        assertSame(current, FixArbiter.better(current, candidate))
+        assertSame(candidate, FixArbiter.better(current, candidate))
     }
 
     @Test
-    fun `slack grows with elapsed time`() {
-        // 10 seconds apart at 90 km/h: the vehicle could have covered 250 m, so a
-        // marginally better accuracy is not enough to believe the new fix.
+    fun `uncertainty expansion grows with elapsed time and speed`() {
+        // 10 seconds apart at 90 km/h (25 m/s): the vehicle has covered ~250 m.
+        // The incumbent's position uncertainty has expanded by 250 m, so even a 30 m fix
+        // represents the current position far better than the 10-second-old fix.
         val current = fix(accuracyM = 10f)
-        val candidate = fix(accuracyM = 15f, speedKmh = 90.0, elapsedSeconds = 10)
-        assertSame(current, FixArbiter.better(current, candidate))
-    }
+        val candidate = fix(accuracyM = 30f, speedKmh = 90.0, elapsedSeconds = 10)
+        assertSame(candidate, FixArbiter.better(current, candidate))
 
-    @Test
-    fun `the required accuracy improvement grows with speed`() {
-        // Same incumbent, same candidate, same one-second gap. Only the speed differs.
-        val incumbent = fix(accuracyM = 100f)
-        val candidate = fix(accuracyM = 90f, speedKmh = 0.0, elapsedSeconds = 1)
-
-        // At rest the allowance is the 5 m floor: 90 + 5 = 95 < 100, so the candidate wins.
-        assertSame(candidate, FixArbiter.better(incumbent, candidate))
-
-        // At 90 km/h the vehicle covers ~25 m in that second, so the allowance is 25 m:
-        // 90 + 25 = 115, which is not an improvement over 100. The incumbent stands.
-        val sameCandidateAtSpeed = fix(accuracyM = 90f, speedKmh = 90.0, elapsedSeconds = 1)
-        assertSame(incumbent, FixArbiter.better(incumbent, sameCandidateAtSpeed))
+        // But an extreme outlier (e.g. 300 m > 10 + 250 = 260 m) is still rejected.
+        val wildCandidate = fix(accuracyM = 300f, speedKmh = 90.0, elapsedSeconds = 10)
+        assertSame(current, FixArbiter.better(current, wildCandidate))
     }
 
     @Test
@@ -106,11 +105,14 @@ class FixArbiterTest {
     }
 
     @Test
-    fun `simultaneous fixes fall back to the minimum slack`() {
-        // Same timestamp: no elapsed time, so only the 5 m floor applies.
+    fun `simultaneous fixes require strictly better accuracy`() {
+        // Same timestamp: no elapsed time, so expansion is 0. Candidate must be more accurate.
         val current = fix(accuracyM = 10f, elapsedSeconds = 0)
-        val candidate = fix(accuracyM = 12f, elapsedSeconds = 0)
-        assertSame(current, FixArbiter.better(current, candidate))
+        val worseCandidate = fix(accuracyM = 12f, elapsedSeconds = 0)
+        assertSame(current, FixArbiter.better(current, worseCandidate))
+
+        val betterCandidate = fix(accuracyM = 8f, elapsedSeconds = 0)
+        assertSame(betterCandidate, FixArbiter.better(current, betterCandidate))
         assertEquals(5.0, FixArbiter.MIN_SLACK_M, 0.0)
     }
 }

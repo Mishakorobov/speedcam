@@ -86,64 +86,70 @@ class GpsLostWatchdog(
 }
 
 /**
- * Stops the service when it looks like it is being used as a covert tracker.
+ * Stops the service when it is backgrounded and has remained stationary (e.g. parked) for too long.
  *
- * Plan.md §8.1, ported from the original: "backgrounded and moved > 100 m within 15 min →
- * stop service". The reading taken here is that an app with no visible UI, whose device is
- * nonetheless being carried down a road, is not being used as a driving aid — and that
- * combination is both a battery problem and a privacy problem. The service shuts itself down
- * rather than continuing to report the route.
+ * ContraCam LocationAnalyzer.java:322-327:
+ * If the vehicle moves > 100 m, the anchor location and timestamp are updated (vehicle is active,
+ * keep running). If the vehicle stays within 100 m for longer than 15 minutes (900,000 ms), the
+ * service automatically stops to preserve the user's battery.
  *
- * Pure, so both halves of the condition and the exact boundary are testable.
+ * Pure, so the reset boundary and timeout boundary are testable.
  */
 class BackgroundAbuseWatchdog(
-    /** Movement inside this window is what triggers the check. */
+    /** Maximum allowed stationary duration while backgrounded before auto-exit. */
     val windowMs: Long = DEFAULT_WINDOW_MS,
-    /** How far the device must have moved. */
+    /** How far the device must move to reset the inactivity timer. */
     val thresholdM: Double = DEFAULT_THRESHOLD_M,
 ) {
-    private var backgroundedAtMs: Long? = null
-    private var backgroundedAt: LatLon? = null
+    private var anchorMs: Long? = null
+    private var anchorPosition: LatLon? = null
 
     /** The app went to the background at [nowMs], from [position] if known. */
     fun onBackgrounded(
         nowMs: Long,
         position: LatLon?,
     ) {
-        backgroundedAtMs = nowMs
-        backgroundedAt = position
+        anchorMs = nowMs
+        anchorPosition = position
     }
 
     /** The app came back to the foreground; the suspicion, if any, is cleared. */
     fun onForegrounded() {
-        backgroundedAtMs = null
-        backgroundedAt = null
+        anchorMs = null
+        anchorPosition = null
     }
 
     /**
-     * Records a movement to [position] at [nowMs] and reports whether the service should stop.
+     * Records a movement to [position] at [nowMs] and reports whether the service should stop
+     * due to prolonged inactivity while backgrounded (e.g., parked).
      *
-     * Returns false — the watchdog disarms itself — once the window has expired, because a
-     * journey that started long ago is no longer the thing the rule was written for.
+     * Returns true if the app has been backgrounded and stationary (within [thresholdM]) for
+     * longer than [windowMs]. Moving beyond [thresholdM] updates the anchor and timer.
      */
     fun onMoved(
         nowMs: Long,
         position: LatLon,
     ): Boolean {
-        val since = backgroundedAtMs
-        val origin = backgroundedAt
-        if (since == null || origin == null) return false
-
-        if (nowMs - since > windowMs) {
-            onForegrounded()
+        val since = anchorMs ?: return false
+        val origin = anchorPosition
+        if (origin == null) {
+            anchorPosition = position
+            anchorMs = nowMs
             return false
         }
 
-        return Geo.haversineMeters(origin, position) > thresholdM
+        if (Geo.haversineMeters(origin, position) > thresholdM) {
+            // Vehicle has moved: reset anchor and inactivity timer
+            anchorPosition = position
+            anchorMs = nowMs
+            return false
+        }
+
+        return nowMs - since > windowMs
     }
 
-    /** True while the app is considered backgrounded and the window is still open. */
-    val isArmed: Boolean get() = backgroundedAtMs != null && backgroundedAt != null
+    /** True while the app is considered backgrounded. */
+    val isArmed: Boolean get() = anchorMs != null
 
     companion object {
         /** Plan.md §8.1: 15 minutes. */

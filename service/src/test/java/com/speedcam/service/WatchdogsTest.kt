@@ -80,7 +80,7 @@ class WatchdogsTest {
         assertEquals(30_000L, GpsLostWatchdog.DEFAULT_TIMEOUT_MS)
     }
 
-    // ------------------------------------------------------- background abuse
+    // ------------------------------------------------------- background abuse / inactivity
 
     @Test
     fun `moving in the foreground is never suspicious`() {
@@ -90,45 +90,68 @@ class WatchdogsTest {
     }
 
     @Test
-    fun `moving while backgrounded past the threshold trips the watchdog`() {
-        val watchdog = BackgroundAbuseWatchdog(thresholdM = 100.0)
+    fun `moving while backgrounded resets the anchor and timer`() {
+        val watchdog = BackgroundAbuseWatchdog(windowMs = 900_000, thresholdM = 100.0)
+        watchdog.onBackgrounded(0, origin)
+
+        // At 10 minutes, car moves 200 m (exceeds 100 m threshold)
+        val pos200 = ServiceFixtures.offset(origin, 200.0, 0.0)
+        assertFalse(
+            watchdog.onMoved(600_000, pos200),
+            "moving resets the timer and keeps service running",
+        )
+
+        // At 20 minutes (10 minutes after move), total time is 20 min but time since reset is only 10 min (< 15 min)
+        assertFalse(
+            watchdog.onMoved(1_200_000, pos200),
+            "timer was reset so service must stay alive",
+        )
+
+        // At 26 minutes (16 minutes after move without further movement): trips watchdog
+        assertTrue(
+            watchdog.onMoved(1_560_001, pos200),
+            "16 minutes stationary after reset trips watchdog",
+        )
+    }
+
+    @Test
+    fun `remaining stationary while backgrounded past the window trips the watchdog`() {
+        val watchdog = BackgroundAbuseWatchdog(windowMs = 900_000, thresholdM = 100.0)
         watchdog.onBackgrounded(0, origin)
 
         assertFalse(
             watchdog.onMoved(60_000, ServiceFixtures.offset(origin, 50.0, 0.0)),
-            "50 m is under the threshold",
+            "50 m is under threshold, within window",
+        )
+        assertFalse(
+            watchdog.onMoved(900_000, ServiceFixtures.offset(origin, 50.0, 0.0)),
+            "exactly at windowMs has not yet exceeded",
         )
         assertTrue(
-            watchdog.onMoved(120_000, ServiceFixtures.offset(origin, 400.0, 0.0)),
-            "400 m while backgrounded must trip it",
+            watchdog.onMoved(900_001, ServiceFixtures.offset(origin, 50.0, 0.0)),
+            "stationary for > 15 min trips the watchdog",
         )
     }
 
     @Test
     fun `the threshold is strict`() {
-        val watchdog = BackgroundAbuseWatchdog(thresholdM = 100.0)
-        watchdog.onBackgrounded(0, origin)
-        assertFalse(
-            watchdog.onMoved(1_000, ServiceFixtures.offset(origin, 99.0, 0.0)),
-            "just under the threshold is not enough",
-        )
-    }
-
-    @Test
-    fun `movement after the window has expired disarms the watchdog`() {
         val watchdog = BackgroundAbuseWatchdog(windowMs = 900_000, thresholdM = 100.0)
         watchdog.onBackgrounded(0, origin)
 
-        assertTrue(watchdog.isArmed)
+        // Moving 99 m does not reset the anchor
         assertFalse(
-            watchdog.onMoved(900_001, ServiceFixtures.offset(origin, 5_000.0, 0.0)),
-            "beyond the window the rule no longer applies",
+            watchdog.onMoved(600_000, ServiceFixtures.offset(origin, 99.0, 0.0)),
+            "99 m is under threshold",
         )
-        assertFalse(watchdog.isArmed, "and the watchdog disarms itself")
+        // So at 900_001 ms from start, it trips!
+        assertTrue(
+            watchdog.onMoved(900_001, ServiceFixtures.offset(origin, 99.0, 0.0)),
+            "anchor was not reset by 99 m displacement",
+        )
     }
 
     @Test
-    fun `coming back to the foreground clears the suspicion`() {
+    fun `coming back to the foreground clears the watchdog`() {
         val watchdog = BackgroundAbuseWatchdog()
         watchdog.onBackgrounded(0, origin)
         watchdog.onForegrounded()
@@ -138,16 +161,16 @@ class WatchdogsTest {
     }
 
     @Test
-    fun `movement without a known starting position cannot trip it`() {
-        // No fix means no origin, and inventing one would produce nonsense distances.
-        val watchdog = BackgroundAbuseWatchdog()
+    fun `entering background without a known starting position initializes on first fix`() {
+        val watchdog = BackgroundAbuseWatchdog(windowMs = 900_000, thresholdM = 100.0)
         watchdog.onBackgrounded(0, position = null)
+        assertTrue(watchdog.isArmed)
 
-        assertFalse(
-            watchdog.onMoved(1_000, ServiceFixtures.offset(origin, 5_000.0, 0.0)),
-            "without an origin position there is no displacement to measure",
-        )
-        assertFalse(watchdog.isArmed)
+        // First fix at 1,000 ms initializes anchor
+        assertFalse(watchdog.onMoved(1_000, origin))
+        // Remains stationary for 900,000 ms after anchor initialization
+        assertFalse(watchdog.onMoved(901_000, origin))
+        assertTrue(watchdog.onMoved(901_001, origin))
     }
 
     @Test

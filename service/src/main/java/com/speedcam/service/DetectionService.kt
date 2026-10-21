@@ -291,8 +291,8 @@ class DetectionService : Service() {
         }
 
         if (abuseWatchdog.onMoved(System.currentTimeMillis(), fix.position)) {
-            // Backgrounded and being driven: the rule from Plan.md §8.1.
-            Log.w(TAG, "Background abuse watchdog tripped; stopping detection.")
+            // Backgrounded and stationary for > 15 min (parked): auto-shutdown to save battery.
+            Log.w(TAG, "Background inactivity watchdog tripped (parked); stopping detection.")
             stopSelf()
             return
         }

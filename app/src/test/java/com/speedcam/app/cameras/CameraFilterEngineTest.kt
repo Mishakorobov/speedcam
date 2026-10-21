@@ -168,10 +168,26 @@ class CameraFilterEngineTest {
     }
 
     @Test
+    fun `excludeBlocked hides blocked cameras from the list`() {
+        val blockedAt = sample[0].position
+        val rows =
+            CameraFilterEngine.apply(
+                sample,
+                CameraFilter(excludeBlocked = true),
+                blocked = listOf(blockedAt.lat to blockedAt.lon),
+            )
+
+        assertFalse(rows.any { it.blocked }, "blocked cameras are excluded when requested")
+        assertEquals(4, rows.size)
+        assertEquals(setOf(2L, 3L, 4L, 5L), rows.map { it.id }.toSet())
+    }
+
+    @Test
     fun `a filter reports whether it is narrowing anything`() {
         assertFalse(CameraFilter().isActive)
         assertTrue(CameraFilter(query = "x").isActive)
         assertTrue(CameraFilter(kinds = setOf(CameraKind.MOBILE)).isActive)
         assertTrue(CameraFilter(minLimitKmh = 10).isActive)
+        assertTrue(CameraFilter(excludeBlocked = true).isActive)
     }
 }

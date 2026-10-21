@@ -28,7 +28,7 @@ data class CameraFilter(
     /** Inclusive upper bound on the limit, in km/h. */
     val maxLimitKmh: Int? = null,
     /** Exclude cameras the driver has blocked. */
-    val excludeBlocked: Boolean = true,
+    val excludeBlocked: Boolean = false,
     /** Only cameras with no recorded limit. Mutually exclusive with [requireLimit]. */
     val onlyUnknownLimit: Boolean = false,
 ) {
@@ -40,7 +40,8 @@ data class CameraFilter(
                 requireLimit ||
                 onlyUnknownLimit ||
                 minLimitKmh != null ||
-                maxLimitKmh != null
+                maxLimitKmh != null ||
+                excludeBlocked
 }
 
 /** One row of the list, with everything the screen needs and nothing else. */
@@ -91,8 +92,10 @@ object CameraFilterEngine {
                     kind = camera.kind,
                     source = camera.source,
                     operator = camera.operator,
-                    blocked = filter.excludeBlocked && isBlocked(camera, blocked, blockRadiusM),
+                    blocked = isBlocked(camera, blocked, blockRadiusM),
                 )
+            }.filter {
+                !filter.excludeBlocked || !it.blocked
             }.sortedWith(
                 // Blocked first so they are reachable to unblock, then by limit so the rows a
                 // driver is scanning for are grouped, then by id for a stable order.

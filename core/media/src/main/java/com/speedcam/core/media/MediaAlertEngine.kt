@@ -105,6 +105,7 @@ class MediaAlertEngine(
         val wantsBeep = AlertChannel.BEEP in decision.channels && mode.allowsTones
         val wantsSound = AlertChannel.SOUND in decision.channels
         val wantsSpeech = AlertChannel.VOICE in decision.channels
+        val wantsVibro = VibrationPolicy.shouldVibrate(AlertChannel.VIBRATION in decision.channels, isPrimary)
 
         val outcome =
             AlertCadence.advance(
@@ -115,6 +116,7 @@ class MediaAlertEngine(
                         wantsSound = wantsSound,
                         wantsBeep = wantsBeep,
                         wantsSpeech = wantsSpeech,
+                        wantsVibro = wantsVibro,
                         playbackMillis = gager.durationMs(decision.distanceM),
                     ),
             )
@@ -123,8 +125,9 @@ class MediaAlertEngine(
         Log.i(
             TAG,
             "Alert at ${decision.distanceM.toInt()} m on $mode: " +
-                "requested(sound=$wantsSound beep=$wantsBeep speech=$wantsSpeech) " +
-                "-> played(sound=${outcome.sound} beep=${outcome.beep} speech=${outcome.speech})",
+                "requested(sound=$wantsSound beep=$wantsBeep speech=$wantsSpeech vibro=$wantsVibro) " +
+                "-> played(sound=${outcome.sound} beep=${outcome.beep} " +
+                "speech=${outcome.speech} vibro=${outcome.vibro})",
         )
 
         // At most one tone per alert. The bank-clip path and the beep path used to each request a
@@ -154,10 +157,9 @@ class MediaAlertEngine(
         // The haptic is part of the alert, so it fires when the alert fires and not on every tick.
         // The original gets this for free because its native core recomputes HazardState.vibro
         // alongside the sound and beep flags; with our cadence latch the equivalent is to
-        // let it follow the same gate. Leaving it ungated produced a 500 ms pulse every
-        // second for as long as a camera was in range, which is a drone, not a warning.
-        val audibleAlert = outcome.beep || outcome.speech
-        if (VibrationPolicy.shouldVibrate(AlertChannel.VIBRATION in decision.channels, isPrimary) && audibleAlert) {
+        // let it follow the same gate. This supports silent tactile alerts (audio muted) while
+        // preventing a continuous 500 ms pulse on every 1 Hz location fix.
+        if (outcome.vibro) {
             vibration.vibrate()
         }
     }
