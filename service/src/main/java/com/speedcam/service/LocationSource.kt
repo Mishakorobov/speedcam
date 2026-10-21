@@ -15,6 +15,20 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.emptyFlow
 
 /**
+ * Polling rate for GPS location updates.
+ */
+enum class PollingRate(
+    val intervalMs: Long,
+    val minUpdateIntervalMs: Long,
+) {
+    /** High-accuracy active driving polling (1 Hz). */
+    ACTIVE(intervalMs = 1_000L, minUpdateIntervalMs = 500L),
+
+    /** Power-saving throttled polling during prolonged standstill / traffic jams (5s). */
+    STATIONARY(intervalMs = 5_000L, minUpdateIntervalMs = 2_500L),
+}
+
+/**
  * A stream of positions for the detection pipeline.
  *
  * Emits the domain [Fix] rather than an Android [Location] so that everything downstream of
@@ -27,6 +41,11 @@ interface LocationSource {
      * cancelling the collector turns it off again.
      */
     fun fixes(): Flow<Fix>
+
+    /**
+     * Updates the location polling interval dynamically (e.g. throttling during stationary periods).
+     */
+    fun setPollingRate(rate: PollingRate) {}
 
     companion object {
         /** For devices or emulator images with no location hardware. */
@@ -48,12 +67,16 @@ interface LocationSource {
 class LocationManagerSource(
     private val manager: LocationManager,
 ) : LocationSource {
+    private var activeListener: LocationListener? = null
+    private var currentRate: PollingRate = PollingRate.ACTIVE
+
     @RequiresPermission(
         anyOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION],
     )
     override fun fixes(): Flow<Fix> =
         callbackFlow {
             val listener = LocationListener { location -> trySend(location.toFix()) }
+            activeListener = listener
 
             PROVIDERS.forEach { provider ->
                 // A last known location seeds the stream so the first detection is not delayed
@@ -62,21 +85,43 @@ class LocationManagerSource(
                     .getOrNull()
                     ?.let { trySend(it.toFix()) }
 
-                // A missing last known location is not a reason to skip the provider: it may
-                // still produce live fixes.
-                runCatching {
-                    manager.requestLocationUpdates(
-                        provider,
-                        MIN_INTERVAL_MS,
-                        MIN_DISTANCE_M,
-                        listener,
-                        Looper.getMainLooper(),
-                    )
-                }
+                registerProvider(provider, currentRate, listener)
             }
 
-            awaitClose { runCatching { manager.removeUpdates(listener) } }
+            awaitClose {
+                activeListener = null
+                runCatching { manager.removeUpdates(listener) }
+            }
         }
+
+    @RequiresPermission(
+        anyOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION],
+    )
+    override fun setPollingRate(rate: PollingRate) {
+        if (rate == currentRate) return
+        currentRate = rate
+        val listener = activeListener ?: return
+        PROVIDERS.forEach { provider ->
+            registerProvider(provider, rate, listener)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun registerProvider(
+        provider: String,
+        rate: PollingRate,
+        listener: LocationListener,
+    ) {
+        runCatching {
+            manager.requestLocationUpdates(
+                provider,
+                rate.intervalMs,
+                MIN_DISTANCE_M,
+                listener,
+                Looper.getMainLooper(),
+            )
+        }
+    }
 
     /**
      * Permission is already held; the class-level annotation exists so that every *caller* has
@@ -87,7 +132,6 @@ class LocationManagerSource(
 
     private companion object {
         val PROVIDERS = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-        const val MIN_INTERVAL_MS = 1_000L
         const val MIN_DISTANCE_M = 0f
     }
 }

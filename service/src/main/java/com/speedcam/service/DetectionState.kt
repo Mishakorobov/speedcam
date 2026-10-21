@@ -58,6 +58,7 @@ data class DetectionUiState(
     val profileName: String = "",
     val headsetConnected: Boolean = false,
     val muted: Boolean = false,
+    val stationaryThrottled: Boolean = false,
 ) {
     /**
      * True when the driver is over the limit of the nearest camera or the active SPECS zone.

@@ -17,8 +17,6 @@ import com.speedcam.core.detect.Fix
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
 
 /**
  * Reads positions from [FusedLocationProviderClient].
@@ -31,6 +29,9 @@ import kotlin.coroutines.resume
 class FusedLocationSource(
     private val client: FusedLocationProviderClient,
 ) : LocationSource {
+    private var activeCallback: LocationCallback? = null
+    private var currentRate: PollingRate = PollingRate.ACTIVE
+
     @RequiresPermission(
         anyOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION],
     )
@@ -45,25 +46,46 @@ class FusedLocationSource(
                         }
                     }
                 }
+            activeCallback = callback
 
-            val request =
-                LocationRequest
-                    .Builder(Priority.PRIORITY_HIGH_ACCURACY, UPDATE_INTERVAL_MS)
-                    .setMinUpdateIntervalMillis(MIN_UPDATE_INTERVAL_MS)
-                    // A GPS-derived speed is far steadier than one derived from position
-                    // differencing, and the "Auto" capture distance is a function of speed.
-                    .setMinUpdateDistanceMeters(0f)
-                    .build()
+            requestUpdates(currentRate, callback)
 
-            client.requestLocationUpdates(request, callback, mainLooper).await()
-
-            awaitClose { client.removeLocationUpdates(callback) }
+            awaitClose {
+                activeCallback = null
+                client.removeLocationUpdates(callback)
+            }
         }
 
-    private companion object {
-        const val UPDATE_INTERVAL_MS = 1_000L
-        const val MIN_UPDATE_INTERVAL_MS = 500L
+    @RequiresPermission(
+        anyOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION],
+    )
+    override fun setPollingRate(rate: PollingRate) {
+        if (rate == currentRate) return
+        currentRate = rate
+        val callback = activeCallback ?: return
+        requestUpdates(rate, callback)
+    }
 
+    @SuppressLint("MissingPermission")
+    private fun requestUpdates(
+        rate: PollingRate,
+        callback: LocationCallback,
+    ) {
+        val request =
+            LocationRequest
+                .Builder(Priority.PRIORITY_HIGH_ACCURACY, rate.intervalMs)
+                .setMinUpdateIntervalMillis(rate.minUpdateIntervalMs)
+                // A GPS-derived speed is far steadier than one derived from position
+                // differencing, and the "Auto" capture distance is a function of speed.
+                .setMinUpdateDistanceMeters(0f)
+                .build()
+
+        runCatching {
+            client.requestLocationUpdates(request, callback, mainLooper)
+        }
+    }
+
+    private companion object {
         val mainLooper: android.os.Looper get() = android.os.Looper.getMainLooper()
     }
 }
@@ -100,16 +122,3 @@ fun hasBackgroundLocationPermission(context: Context): Boolean =
     android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q ||
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
-
-/**
- * Awaits a Play Services [com.google.android.gms.tasks.Task].
- *
- * Written out rather than pulled in from `kotlinx-coroutines-play-services`, which exists
- * purely to make this one call. The interop artifact is not worth a dependency.
- */
-private suspend fun <T> com.google.android.gms.tasks.Task<T>.await(): T =
-    suspendCancellableCoroutine { continuation ->
-        addOnSuccessListener { continuation.resume(it) }
-        addOnFailureListener { continuation.resumeWith(Result.failure(it)) }
-        addOnCanceledListener { continuation.cancel() }
-    }

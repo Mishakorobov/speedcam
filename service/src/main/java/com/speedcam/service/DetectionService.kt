@@ -50,12 +50,14 @@ class DetectionService : Service() {
 
     private val gpsWatchdog = GpsLostWatchdog()
     private val abuseWatchdog = BackgroundAbuseWatchdog()
+    private val adaptiveWatchdog = AdaptiveLocationWatchdog()
     private val profiles by lazy { ProfileStore(this) }
     private val gpsLostText by lazy { getString(R.string.notification_gps_lost) }
 
     private var lastAcceptedFix: Fix? = null
     private var store: CameraStore? = null
     private var activePipeline: DetectionPipeline? = null
+    private var locationSource: LocationSource? = null
     private var visibility: AppVisibility? = null
     private var collecting = false
     private var fixesSeen = 0L
@@ -114,6 +116,8 @@ class DetectionService : Service() {
         visibility = null
         if (mediaEngine != null) mediaEngine?.release()
         scope.cancel()
+        locationSource = null
+        adaptiveWatchdog.reset()
         store?.close()
         store = null
         super.onDestroy()
@@ -168,6 +172,7 @@ class DetectionService : Service() {
             activePipeline = pipeline
             publishState(cameraStore)
             val source = locationSource(this@DetectionService)
+            locationSource = source
 
             // Armed before the first fix is awaited, so that a provider which never delivers
             // anything is still reported after the timeout.
@@ -233,6 +238,7 @@ class DetectionService : Service() {
                 nearest = views.getOrNull(0),
                 second = views.getOrNull(1),
                 activeSection = nextSection,
+                stationaryThrottled = adaptiveWatchdog.currentRate == PollingRate.STATIONARY,
             )
         }
     }
@@ -265,6 +271,8 @@ class DetectionService : Service() {
         pipeline: DetectionPipeline,
     ) {
         gpsWatchdog.onFix(fix.timestampMillis)
+        val rate = adaptiveWatchdog.onFix(System.currentTimeMillis(), fix)
+        locationSource?.setPollingRate(rate)
         refreshCallState()
         fixesSeen++
         // Rate-limited: a one-second cadence would be a line a second forever.
