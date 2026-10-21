@@ -21,6 +21,7 @@ import com.speedcam.core.detect.Fix
 import com.speedcam.core.detect.SectionEvent
 import com.speedcam.core.media.MediaAlertEngine
 import com.speedcam.core.media.OutputMode
+import com.speedcam.service.wear.WearCompanionBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -122,6 +123,7 @@ class DetectionService : Service() {
         store = null
         DetectionState.update { it.copy(running = false, hasFix = false) }
         CarLauncherBroadcaster.broadcast(this, DetectionState.state.value, profiles)
+        WearCompanionBridge.broadcast(this, DetectionState.state.value, profiles, force = true)
         super.onDestroy()
     }
 
@@ -246,6 +248,7 @@ class DetectionService : Service() {
             )
         }
         CarLauncherBroadcaster.broadcast(this, DetectionState.state.value, profiles)
+        WearCompanionBridge.broadcast(this, DetectionState.state.value, profiles)
     }
 
     /** Pushes everything that does not change from fix to fix. */
@@ -269,6 +272,7 @@ class DetectionService : Service() {
                 muted = !profile.beepEnabled && !profile.voice && !profile.vibro,
             ),
         )
+        WearCompanionBridge.broadcast(this, DetectionState.state.value, profiles, force = true)
     }
 
     private fun onFix(

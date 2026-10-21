@@ -98,6 +98,7 @@ import com.speedcam.service.CarBluetoothManager
 import com.speedcam.service.DetectionState
 import com.speedcam.service.ProfileStore
 import com.speedcam.service.ServiceController
+import com.speedcam.service.wear.WearCompanionBridge
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -132,6 +133,8 @@ class MainActivity : ComponentActivity() {
     private var pipAutoEnter by mutableStateOf(true)
     private var launcherBroadcastEnabled by mutableStateOf(true)
     private var headUnitAutoStart by mutableStateOf(true)
+    private var connectedWatchCount by mutableStateOf(0)
+    private var connectedWatchName by mutableStateOf("")
 
     private val pipActionReceiver =
         object : BroadcastReceiver() {
@@ -200,6 +203,18 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun checkConnectedWatches() {
+        WearCompanionBridge.queryConnectedWatches(this) { count, name ->
+            connectedWatchCount = count
+            connectedWatchName = name
+        }
+    }
+
+    private fun testWearVibration() {
+        WearCompanionBridge.sendCommand(this, WearCompanionBridge.PATH_ALERT, "TEST_VIBRATION")
+        Toast.makeText(this, "Test vibration sent to watch", Toast.LENGTH_SHORT).show()
+    }
+
     override fun onStop() {
         super.onStop()
         runCatching { unregisterReceiver(pipActionReceiver) }
@@ -246,42 +261,23 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun FullscreenAppContent(detectionState: com.speedcam.service.DetectionUiState) {
-        val syncWorkInfos by WorkManager
+        val syncInfos by WorkManager
             .getInstance(this)
             .getWorkInfosForUniqueWorkFlow(DatabaseSyncWorker.WORK_NAME_IMMEDIATE)
             .collectAsStateWithLifecycle(initialValue = emptyList())
-
-        val hazardWorkInfos by WorkManager
+        val hazardInfos by WorkManager
             .getInstance(this)
             .getWorkInfosForUniqueWorkFlow(HazardReportSyncWorker.WORK_NAME_IMMEDIATE)
             .collectAsStateWithLifecycle(initialValue = emptyList())
-
-        val isUpdating =
-            syncWorkInfos.any {
-                it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
-            }
-
-        val isSyncingReports =
-            hazardWorkInfos.any {
-                it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
-            }
-
-        val pendingReportCount by (store ?: SpeedCamApp.cameraStore(this))
+        val isUpdating = syncInfos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+        val isSyncing = hazardInfos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+        val pendingCount by (store ?: SpeedCamApp.cameraStore(this))
             .observePendingReportCount()
             .collectAsStateWithLifecycle(initialValue = 0)
 
-        LaunchedEffect(syncWorkInfos) {
-            if (syncWorkInfos.any { it.state.isFinished }) {
-                refreshCameraList()
-            }
+        LaunchedEffect(syncInfos) {
+            if (syncInfos.any { it.state.isFinished }) refreshCameraList()
         }
-
-        val bondedDevices =
-            runCatching {
-                CarBluetoothManager.getBondedDevices(this).map {
-                    it.address to (runCatching { it.name }.getOrNull() ?: it.address)
-                }
-            }.getOrDefault(emptyList())
 
         AppShell(
             state =
@@ -293,8 +289,8 @@ class MainActivity : ComponentActivity() {
                     profiles = profiles,
                     hudPermissionGranted = HudOverlay.canDrawOverlays(this),
                     isUpdating = isUpdating,
-                    pendingReportCount = pendingReportCount,
-                    isSyncingReports = isSyncingReports,
+                    pendingReportCount = pendingCount,
+                    isSyncingReports = isSyncing,
                     isContraCamSyncing = isContraCamSyncing,
                     useContraCamDb = useContraCamDb,
                     autoStartOnBluetooth = autoStartOnBluetooth,
@@ -302,15 +298,26 @@ class MainActivity : ComponentActivity() {
                     bluetoothDeviceFilter = bluetoothDeviceFilter,
                     bluetoothDeviceFilterName = bluetoothDeviceFilterName,
                     bluetoothStopDelaySeconds = bluetoothStopDelaySeconds,
-                    pairedBluetoothDevices = bondedDevices,
+                    pairedBluetoothDevices = getBondedDevices(),
                     pipEnabled = pipEnabled,
                     pipAutoEnter = pipAutoEnter,
                     launcherBroadcastEnabled = launcherBroadcastEnabled,
                     headUnitAutoStart = headUnitAutoStart,
+                    wearCompanionEnabled = profiles.wearCompanionEnabled,
+                    wearHapticProfile = profiles.wearHapticProfile,
+                    connectedWatchCount = connectedWatchCount,
+                    connectedWatchName = connectedWatchName,
                 ),
             actions = buildShellActions(),
         )
     }
+
+    private fun getBondedDevices(): List<Pair<String, String>> =
+        runCatching {
+            CarBluetoothManager.getBondedDevices(this).map {
+                it.address to (runCatching { it.name }.getOrNull() ?: it.address)
+            }
+        }.getOrDefault(emptyList())
 
     private fun toggleAutoUpdate(enabled: Boolean) {
         profiles.autoUpdateEnabled = enabled
@@ -319,6 +326,28 @@ class MainActivity : ComponentActivity() {
         } else {
             DatabaseSyncWorker.cancelPeriodic(this)
         }
+    }
+
+    private fun onBluetoothFilterChange(
+        address: String,
+        name: String,
+    ) {
+        bluetoothDeviceFilter = address
+        bluetoothDeviceFilterName = name
+        profiles.bluetoothDeviceFilter = address
+        profiles.bluetoothDeviceFilterName = name
+    }
+
+    private fun onPipChange(enabled: Boolean) {
+        pipEnabled = enabled
+        profiles.pipEnabled = enabled
+        PipHelper.updatePipParams(this, DetectionState.state.value, profiles)
+    }
+
+    private fun onPipAutoEnterChange(autoEnter: Boolean) {
+        pipAutoEnter = autoEnter
+        profiles.pipAutoEnter = autoEnter
+        PipHelper.updatePipParams(this, DetectionState.state.value, profiles)
     }
 
     private fun buildShellActions(): ShellActions =
@@ -346,29 +375,14 @@ class MainActivity : ComponentActivity() {
                 autoStopOnBluetooth = it
                 profiles.autoStopOnBluetooth = it
             },
-            onBluetoothDeviceFilterChange = { address, name ->
-                bluetoothDeviceFilter = address
-                bluetoothDeviceFilterName = name
-                profiles.bluetoothDeviceFilter = address
-                profiles.bluetoothDeviceFilterName = name
-            },
+            onBluetoothDeviceFilterChange = ::onBluetoothFilterChange,
             onBluetoothStopDelaySecondsChange = {
                 bluetoothStopDelaySeconds = it
                 profiles.bluetoothStopDelaySeconds = it
             },
-            onEnterPip = {
-                PipHelper.enterPipMode(this, DetectionState.state.value, profiles)
-            },
-            onPipEnabledChange = {
-                pipEnabled = it
-                profiles.pipEnabled = it
-                PipHelper.updatePipParams(this, DetectionState.state.value, profiles)
-            },
-            onPipAutoEnterChange = {
-                pipAutoEnter = it
-                profiles.pipAutoEnter = it
-                PipHelper.updatePipParams(this, DetectionState.state.value, profiles)
-            },
+            onEnterPip = { PipHelper.enterPipMode(this, DetectionState.state.value, profiles) },
+            onPipEnabledChange = ::onPipChange,
+            onPipAutoEnterChange = ::onPipAutoEnterChange,
             onLauncherBroadcastEnabledChange = {
                 launcherBroadcastEnabled = it
                 profiles.launcherBroadcastEnabled = it
@@ -377,6 +391,9 @@ class MainActivity : ComponentActivity() {
                 headUnitAutoStart = it
                 profiles.headUnitAutoStart = it
             },
+            onWearCompanionEnabledChange = { profiles.wearCompanionEnabled = it },
+            onWearHapticProfileChange = { profiles.wearHapticProfile = it },
+            onTestWearVibration = ::testWearVibration,
         )
 
     private fun toggleContraCamDb(enabled: Boolean) {
@@ -431,6 +448,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        checkConnectedWatches()
         autoStartOnBluetooth = profiles.autoStartOnBluetooth
         autoStopOnBluetooth = profiles.autoStopOnBluetooth
         bluetoothDeviceFilter = profiles.bluetoothDeviceFilter
@@ -613,6 +631,10 @@ private data class ShellState(
     val pipAutoEnter: Boolean = true,
     val launcherBroadcastEnabled: Boolean = true,
     val headUnitAutoStart: Boolean = true,
+    val wearCompanionEnabled: Boolean = true,
+    val wearHapticProfile: String = "MOTORCYCLE_HIGH",
+    val connectedWatchCount: Int = 0,
+    val connectedWatchName: String = "",
 )
 
 /** What the shell does, one callback per screen-level action. */
@@ -641,6 +663,9 @@ private data class ShellActions(
     val onPipAutoEnterChange: (Boolean) -> Unit,
     val onLauncherBroadcastEnabledChange: (Boolean) -> Unit,
     val onHeadUnitAutoStartChange: (Boolean) -> Unit,
+    val onWearCompanionEnabledChange: (Boolean) -> Unit,
+    val onWearHapticProfileChange: (String) -> Unit,
+    val onTestWearVibration: () -> Unit,
     val onNavigateToTab: (Tab) -> Unit = {},
 )
 
@@ -897,6 +922,10 @@ private fun buildSettingsState(state: ShellState): SettingsState {
         pipAutoEnter = state.pipAutoEnter,
         launcherBroadcastEnabled = state.launcherBroadcastEnabled,
         headUnitAutoStart = state.headUnitAutoStart,
+        wearCompanionEnabled = state.wearCompanionEnabled,
+        wearHapticProfile = state.wearHapticProfile,
+        connectedWatchCount = state.connectedWatchCount,
+        connectedWatchName = state.connectedWatchName,
     )
 }
 
@@ -933,6 +962,9 @@ private fun buildSettingsActions(
         onPipAutoEnterChange = actions.onPipAutoEnterChange,
         onLauncherBroadcastEnabledChange = actions.onLauncherBroadcastEnabledChange,
         onHeadUnitAutoStartChange = actions.onHeadUnitAutoStartChange,
+        onWearCompanionEnabledChange = actions.onWearCompanionEnabledChange,
+        onWearHapticProfileChange = actions.onWearHapticProfileChange,
+        onTestWearVibration = actions.onTestWearVibration,
     )
 
 @Composable

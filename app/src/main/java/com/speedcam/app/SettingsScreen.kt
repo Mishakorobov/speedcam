@@ -2,6 +2,7 @@ package com.speedcam.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -26,7 +28,9 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -41,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -94,6 +99,10 @@ data class SettingsState(
     val pipAutoEnter: Boolean = true,
     val launcherBroadcastEnabled: Boolean = true,
     val headUnitAutoStart: Boolean = true,
+    val wearCompanionEnabled: Boolean = true,
+    val wearHapticProfile: String = "MOTORCYCLE_HIGH",
+    val connectedWatchCount: Int = 0,
+    val connectedWatchName: String = "",
 )
 
 /** The settings screen's writes, bundled for reviewability. */
@@ -122,6 +131,9 @@ data class SettingsActions(
     val onPipAutoEnterChange: (Boolean) -> Unit = {},
     val onLauncherBroadcastEnabledChange: (Boolean) -> Unit = {},
     val onHeadUnitAutoStartChange: (Boolean) -> Unit = {},
+    val onWearCompanionEnabledChange: (Boolean) -> Unit = {},
+    val onWearHapticProfileChange: (String) -> Unit = {},
+    val onTestWearVibration: () -> Unit = {},
 )
 
 /**
@@ -146,6 +158,7 @@ fun SettingsScreen(
         DetectionSectionCard(state = state, actions = actions)
         BluetoothAutomationSectionCard(state = state, actions = actions)
         AutomotiveIntegrationSectionCard(state = state, actions = actions)
+        WearCompanionSectionCard(state = state, actions = actions)
         AudioSectionCard(state = state, actions = actions)
         HudSectionCard(state = state, actions = actions)
         PipSectionCard(state = state, actions = actions)
@@ -373,6 +386,116 @@ private fun AutomotiveIntegrationSectionCard(
             checked = state.headUnitAutoStart,
             onCheckedChange = actions.onHeadUnitAutoStartChange,
         )
+    }
+}
+
+@Composable
+private fun WearCompanionSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "Wear OS Watch & Motorcycle Haptics",
+        icon = Icons.Default.Watch,
+    ) {
+        SettingsToggleItem(
+            title = "Wear OS Companion Sync",
+            subtitle = "Send real-time speed alerts and haptic vibrations to your smartwatch",
+            checked = state.wearCompanionEnabled,
+            onCheckedChange = actions.onWearCompanionEnabledChange,
+        )
+
+        WearWatchStatusRow(
+            count = state.connectedWatchCount,
+            name = state.connectedWatchName,
+        )
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+        Text("Motorcycle Haptic Profile (Wrist Vibration)", style = MaterialTheme.typography.titleSmall)
+        Text(
+            text = "High-amplitude vibration waveforms designed to cut through thick motorcycle gloves.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        WearHapticProfileSelector(
+            selectedProfile = state.wearHapticProfile,
+            onChange = actions.onWearHapticProfileChange,
+        )
+
+        OutlinedButton(
+            onClick = actions.onTestWearVibration,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Vibration,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Test Vibration on Watch")
+        }
+    }
+}
+
+@Composable
+private fun WearWatchStatusRow(
+    count: Int,
+    name: String,
+) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (count > 0) Color(0xFF10B981) else Color(0xFF64748B)),
+            )
+            val label =
+                if (count > 0) {
+                    "Connected: $name ($count watch${if (count > 1) "es" else ""})"
+                } else {
+                    "No Wear OS watch connected (or searching)"
+                }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WearHapticProfileSelector(
+    selectedProfile: String,
+    onChange: (String) -> Unit,
+) {
+    val profiles =
+        listOf(
+            "MOTORCYCLE_HIGH" to "Moto High",
+            "STANDARD" to "Standard",
+            "OVERLIMIT_ONLY" to "Overlimit Only",
+            "SILENT" to "Silent",
+        )
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(profiles) { (key, label) ->
+            FilterChip(
+                selected = selectedProfile == key,
+                onClick = { onChange(key) },
+                label = { Text(label) },
+            )
+        }
     }
 }
 

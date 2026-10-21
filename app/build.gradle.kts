@@ -61,6 +61,10 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+
+    lint {
+        disable += "InvalidFragmentVersionForActivityResult"
+    }
 }
 
 /**
@@ -167,6 +171,7 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.car.app)
+    implementation(libs.play.services.wearable)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)

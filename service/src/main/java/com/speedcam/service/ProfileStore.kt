@@ -184,6 +184,16 @@ class ProfileStore(
         get() = prefs.getBoolean(KEY_HEAD_UNIT_AUTO_START, true)
         set(value) = prefs.edit().putBoolean(KEY_HEAD_UNIT_AUTO_START, value).apply()
 
+    /** Enable telemetry and hazard alerts synchronization with Wear OS companion watch. */
+    var wearCompanionEnabled: Boolean
+        get() = prefs.getBoolean(KEY_WEAR_COMPANION_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_WEAR_COMPANION_ENABLED, value).apply()
+
+    /** Motorcycle tactile vibration intensity profile for Wear OS companion. */
+    var wearHapticProfile: String
+        get() = prefs.getString(KEY_WEAR_HAPTIC_PROFILE, "MOTORCYCLE_HIGH") ?: "MOTORCYCLE_HIGH"
+        set(value) = prefs.edit().putString(KEY_WEAR_HAPTIC_PROFILE, value).apply()
+
     /**
      * The profile detection runs under right now.
      *
@@ -235,6 +245,8 @@ class ProfileStore(
         const val KEY_PIP_AUTO_ENTER = "pipAutoEnter"
         const val KEY_LAUNCHER_BROADCAST_ENABLED = "launcherBroadcastEnabled"
         const val KEY_HEAD_UNIT_AUTO_START = "headUnitAutoStart"
+        const val KEY_WEAR_COMPANION_ENABLED = "wearCompanionEnabled"
+        const val KEY_WEAR_HAPTIC_PROFILE = "wearHapticProfile"
         const val DEFAULT_STOP_DELAY_SECONDS = 20
     }
 }

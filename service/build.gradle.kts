@@ -28,6 +28,8 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.play.services.wearable)
+    implementation(libs.gson)
 
     // FusedLocationProviderClient is the primary location source (Plan.md 3.3); the service
     // falls back to LocationManager when Play Services is absent.

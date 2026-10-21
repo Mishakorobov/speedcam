@@ -9,7 +9,7 @@ ktlint_code_style = ktlint_official
 # Compose requires @Composable functions to start with an uppercase letter, so that a call
 # reads as a UI element rather than an operation. ktlint's function-naming rule assumes the
 # opposite convention and does not know about the Compose compiler.
-[app/src/main/java/com/speedcam/app/**/*.kt]
+[{app,wear}/src/main/java/com/speedcam/**/*.kt]
 ktlint_standard_function-naming = disabled
 
 [*.{yml,yaml,json}]
