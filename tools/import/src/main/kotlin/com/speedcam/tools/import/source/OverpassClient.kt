@@ -356,6 +356,10 @@ object OverpassMapper {
                 ?.trim()
                 ?.lowercase()
                 ?.removeSuffix("km/h")
+                ?.removeSuffix("км/ч")
+                ?.removeSuffix("кмч")
+                ?.removeSuffix("kmh")
+                ?.removeSuffix("kph")
                 ?.removeSuffix("mph")
                 ?.trim()
                 ?: return null
@@ -372,23 +376,47 @@ object OverpassMapper {
             "n" to 0.0,
             "north" to 0.0,
             "север" to 0.0,
+            "с" to 0.0,
+            "nne" to 22.5,
             "ne" to 45.0,
             "northeast" to 45.0,
+            "северо-восток" to 45.0,
+            "северовосток" to 45.0,
+            "св" to 45.0,
+            "ene" to 67.5,
             "e" to 90.0,
             "east" to 90.0,
             "восток" to 90.0,
+            "в" to 90.0,
+            "ese" to 112.5,
             "se" to 135.0,
             "southeast" to 135.0,
+            "юго-восток" to 135.0,
+            "юговосток" to 135.0,
+            "юв" to 135.0,
+            "sse" to 157.5,
             "s" to 180.0,
             "south" to 180.0,
             "юг" to 180.0,
+            "ю" to 180.0,
+            "ssw" to 202.5,
             "sw" to 225.0,
             "southwest" to 225.0,
+            "юго-запад" to 225.0,
+            "югозапад" to 225.0,
+            "юз" to 225.0,
+            "wsw" to 247.5,
             "w" to 270.0,
             "west" to 270.0,
             "запад" to 270.0,
+            "з" to 270.0,
+            "wnw" to 292.5,
             "nw" to 315.0,
             "northwest" to 315.0,
+            "северо-запад" to 315.0,
+            "северозапад" to 315.0,
+            "сз" to 315.0,
+            "nnw" to 337.5,
         )
 
     /**
@@ -408,6 +436,7 @@ object OverpassMapper {
 
     internal fun kindFrom(tags: Map<String, String>): com.speedcam.core.detect.CameraKind =
         when {
+            tags["dummy"] == "yes" || tags["enforcement"] == "dummy" -> com.speedcam.core.detect.CameraKind.DUMMY
             tags["enforcement"] == "average_speed" -> com.speedcam.core.detect.CameraKind.AVERAGE_ENTRY
             tags["enforcement"] == "traffic_signals" -> com.speedcam.core.detect.CameraKind.RED_LIGHT
             tags["man_made"] == "surveillance" -> com.speedcam.core.detect.CameraKind.COMPLEX

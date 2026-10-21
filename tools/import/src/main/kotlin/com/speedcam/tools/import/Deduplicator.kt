@@ -152,7 +152,7 @@ class Deduplicator(
     private fun packCell(
         lat: Long,
         lon: Long,
-    ): Long = (lat shl 32) xor (lon and 0xFFFFFFFFL)
+    ): Long = ((lat and 0xFFFFFFFFL) shl 32) or (lon and 0xFFFFFFFFL)
 
     companion object {
         /**
@@ -164,12 +164,12 @@ class Deduplicator(
         const val RADIUS_M = 8.0
 
         /**
-         * Grid cell size in degrees, about 11 m.
+         * Grid cell size in degrees, about 55 m at the equator and ~10 m at 80° latitude.
          *
-         * Must exceed [RADIUS_M] so that any two points within the radius land in the same or
-         * an adjacent cell.
+         * Must exceed [RADIUS_M] in both latitude and longitude across all serviceable latitudes,
+         * so that any two points within the radius land in the same or an adjacent cell.
          */
-        private const val CELL_DEGREES = 0.0001
+        private const val CELL_DEGREES = 0.0005
 
         /**
          * Tie-break order when two records are equally complete.

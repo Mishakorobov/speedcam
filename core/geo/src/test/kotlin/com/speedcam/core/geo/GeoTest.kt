@@ -151,6 +151,39 @@ class GeoTest {
     }
 
     @Test
+    fun `bounding box handles antimeridian crossing`() {
+        val center = LatLon(65.0, 179.99)
+        val radius = 5_000.0
+        val box = Geo.boundingBox(center, radius)
+
+        assertTrue(box.crossesAntimeridian, "box should cross the 180° antimeridian")
+        assertTrue(center in box, "center should be inside the box")
+
+        // A point just across the 180° meridian in the western hemisphere (~2 km away)
+        val eastHemispherePoint = LatLon(65.0, 179.96)
+        val westHemispherePoint = LatLon(65.0, -179.98)
+        assertTrue(eastHemispherePoint in box)
+        assertTrue(westHemispherePoint in box)
+
+        // Points far outside the box
+        val distantPoint = LatLon(65.0, 0.0)
+        assertTrue(distantPoint !in box)
+    }
+
+    @Test
+    fun `bounding box handles antimeridian crossing from west to east`() {
+        val center = LatLon(65.0, -179.99)
+        val radius = 5_000.0
+        val box = Geo.boundingBox(center, radius)
+
+        assertTrue(box.crossesAntimeridian, "box should cross the 180° antimeridian")
+        assertTrue(center in box)
+
+        val eastHemispherePoint = LatLon(65.0, 179.98)
+        assertTrue(eastHemispherePoint in box)
+    }
+
+    @Test
     fun `LatLon rejects out-of-range coordinates`() {
         var rejectedLat = false
         try {

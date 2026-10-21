@@ -11,6 +11,11 @@ class OverpassMapperTest {
         assertEquals(60, OverpassMapper.parseLimit("60"))
         assertEquals(80, OverpassMapper.parseLimit("80 km/h"))
         assertEquals(80, OverpassMapper.parseLimit("80 KM/H"))
+        assertEquals(60, OverpassMapper.parseLimit("60 км/ч"))
+        assertEquals(60, OverpassMapper.parseLimit("60км/ч"))
+        assertEquals(90, OverpassMapper.parseLimit("90 кмч"))
+        assertEquals(110, OverpassMapper.parseLimit("110 kmh"))
+        assertEquals(70, OverpassMapper.parseLimit("70 kph"))
     }
 
     @Test
@@ -47,9 +52,52 @@ class OverpassMapperTest {
     fun `parses cardinal directions in both latin and cyrillic`() {
         assertEquals(0.0, OverpassMapper.parseDirection("N")!!, 1e-9)
         assertEquals(0.0, OverpassMapper.parseDirection("север")!!, 1e-9)
+        assertEquals(0.0, OverpassMapper.parseDirection("с")!!, 1e-9)
+        assertEquals(22.5, OverpassMapper.parseDirection("NNE")!!, 1e-9)
+        assertEquals(45.0, OverpassMapper.parseDirection("NE")!!, 1e-9)
+        assertEquals(45.0, OverpassMapper.parseDirection("северо-восток")!!, 1e-9)
+        assertEquals(45.0, OverpassMapper.parseDirection("св")!!, 1e-9)
         assertEquals(90.0, OverpassMapper.parseDirection("E")!!, 1e-9)
+        assertEquals(90.0, OverpassMapper.parseDirection("в")!!, 1e-9)
+        assertEquals(135.0, OverpassMapper.parseDirection("SE")!!, 1e-9)
+        assertEquals(135.0, OverpassMapper.parseDirection("юго-восток")!!, 1e-9)
+        assertEquals(135.0, OverpassMapper.parseDirection("юв")!!, 1e-9)
         assertEquals(180.0, OverpassMapper.parseDirection("south")!!, 1e-9)
+        assertEquals(180.0, OverpassMapper.parseDirection("ю")!!, 1e-9)
+        assertEquals(225.0, OverpassMapper.parseDirection("юз")!!, 1e-9)
+        assertEquals(270.0, OverpassMapper.parseDirection("запад")!!, 1e-9)
+        assertEquals(270.0, OverpassMapper.parseDirection("з")!!, 1e-9)
         assertEquals(315.0, OverpassMapper.parseDirection("NW")!!, 1e-9)
+        assertEquals(315.0, OverpassMapper.parseDirection("сз")!!, 1e-9)
+        assertEquals(315.0, OverpassMapper.parseDirection("северо-запад")!!, 1e-9)
+    }
+
+    @Test
+    fun `detects camera kind including dummy housings`() {
+        assertEquals(
+            com.speedcam.core.detect.CameraKind.DUMMY,
+            OverpassMapper.kindFrom(mapOf("dummy" to "yes")),
+        )
+        assertEquals(
+            com.speedcam.core.detect.CameraKind.DUMMY,
+            OverpassMapper.kindFrom(mapOf("enforcement" to "dummy")),
+        )
+        assertEquals(
+            com.speedcam.core.detect.CameraKind.AVERAGE_ENTRY,
+            OverpassMapper.kindFrom(mapOf("enforcement" to "average_speed")),
+        )
+        assertEquals(
+            com.speedcam.core.detect.CameraKind.RED_LIGHT,
+            OverpassMapper.kindFrom(mapOf("enforcement" to "traffic_signals")),
+        )
+        assertEquals(
+            com.speedcam.core.detect.CameraKind.COMPLEX,
+            OverpassMapper.kindFrom(mapOf("man_made" to "surveillance")),
+        )
+        assertEquals(
+            com.speedcam.core.detect.CameraKind.FIXED,
+            OverpassMapper.kindFrom(mapOf("highway" to "speed_camera")),
+        )
     }
 
     @Test

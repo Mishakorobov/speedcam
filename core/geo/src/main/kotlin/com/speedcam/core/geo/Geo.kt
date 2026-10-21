@@ -106,19 +106,44 @@ object Geo {
 
         val minLat = maxOf(-90.0, center.lat - latDelta)
         val maxLat = minOf(90.0, center.lat + latDelta)
-        val minLon = maxOf(-180.0, center.lon - lonDelta)
-        val maxLon = minOf(180.0, center.lon + lonDelta)
+
+        val minLon: Double
+        val maxLon: Double
+        if (lonDelta >= 180.0) {
+            minLon = -180.0
+            maxLon = 180.0
+        } else {
+            val rawMin = center.lon - lonDelta
+            val rawMax = center.lon + lonDelta
+            minLon = if (rawMin < -180.0) rawMin + 360.0 else rawMin
+            maxLon = if (rawMax > 180.0) rawMax - 360.0 else rawMax
+        }
 
         return BoundingBox(minLat, minLon, maxLat, maxLon)
     }
 }
 
-/** An axis-aligned latitude/longitude window. */
+/**
+ * An axis-aligned latitude/longitude window.
+ *
+ * When [minLon] > [maxLon], the window straddles the 180° antimeridian (e.g. Chukotka).
+ */
 data class BoundingBox(
     val minLat: Double,
     val minLon: Double,
     val maxLat: Double,
     val maxLon: Double,
 ) {
-    operator fun contains(p: LatLon): Boolean = p.lat in minLat..maxLat && p.lon in minLon..maxLon
+    /** True when this box crosses the 180° antimeridian. */
+    val crossesAntimeridian: Boolean
+        get() = minLon > maxLon
+
+    operator fun contains(p: LatLon): Boolean {
+        if (p.lat !in minLat..maxLat) return false
+        return if (crossesAntimeridian) {
+            p.lon >= minLon || p.lon <= maxLon
+        } else {
+            p.lon in minLon..maxLon
+        }
+    }
 }

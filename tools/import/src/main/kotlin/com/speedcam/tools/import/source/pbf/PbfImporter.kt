@@ -1,7 +1,6 @@
 package com.speedcam.tools.import.source.pbf
 
 import com.speedcam.core.detect.Camera
-import com.speedcam.core.detect.CameraKind
 import com.speedcam.core.detect.CameraSource
 import com.speedcam.core.detect.SectionRecord
 import com.speedcam.core.geo.LatLon
@@ -329,13 +328,7 @@ fun PbfReader.Context.toCamera(
         source = CameraSource.OSM,
         externalId = "node/$id",
         limitKmh = OverpassMapper.parseLimit(tags["maxspeed"]),
-        kind =
-            when {
-                tags["enforcement"] == "average_speed" -> CameraKind.AVERAGE_ENTRY
-                tags["enforcement"] == "traffic_signals" -> CameraKind.RED_LIGHT
-                tags["man_made"] == "surveillance" -> CameraKind.COMPLEX
-                else -> CameraKind.FIXED
-            },
+        kind = OverpassMapper.kindFrom(tags),
         facingDeg = OverpassMapper.parseDirection(direction),
         dirCount = if (direction != null) 1 else 2,
         operator = tags["operator"],

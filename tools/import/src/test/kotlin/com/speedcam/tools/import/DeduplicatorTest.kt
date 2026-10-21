@@ -63,6 +63,19 @@ class DeduplicatorTest {
     }
 
     @Test
+    fun `records within the merge radius collapse at high latitude`() {
+        // At 60°N (e.g. St. Petersburg), longitude degrees are compressed by half (~55.6 m/deg).
+        // Two cameras ~7 m apart longitudinally straddle cell boundaries; with CELL_DEGREES = 0.0005
+        // they must still be recognized within the 8 m radius and collapse.
+        val cameras =
+            listOf(
+                camera(60.000000, 30.000000, source = CameraSource.OSM),
+                camera(60.000000, 30.000125, source = CameraSource.SPEEDCAM),
+            )
+        assertEquals(1, Deduplicator().merge(cameras).size)
+    }
+
+    @Test
     fun `devices a few tens of metres apart stay separate`() {
         // Russian complexes frequently place several devices on one gantry a few metres
         // apart. Merging them would lose a real warning, which is worse than a double alert.

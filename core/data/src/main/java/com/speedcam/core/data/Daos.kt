@@ -31,7 +31,11 @@ interface CameraDao {
         """
         SELECT * FROM camera
         WHERE lat BETWEEN :minLat AND :maxLat
-          AND lon BETWEEN :minLon AND :maxLon
+          AND (
+            (:minLon <= :maxLon AND lon BETWEEN :minLon AND :maxLon)
+            OR
+            (:minLon > :maxLon AND (lon >= :minLon OR lon <= :maxLon))
+          )
         """,
     )
     fun queryBox(
@@ -126,7 +130,11 @@ interface OverrideDao {
         """
         SELECT * FROM override_
         WHERE lat BETWEEN :minLat AND :maxLat
-          AND lon BETWEEN :minLon AND :maxLon
+          AND (
+            (:minLon <= :maxLon AND lon BETWEEN :minLon AND :maxLon)
+            OR
+            (:minLon > :maxLon AND (lon >= :minLon OR lon <= :maxLon))
+          )
         """,
     )
     suspend fun inBox(
@@ -224,7 +232,7 @@ object CameraMappers {
             checkDate = c.checkDate,
         )
 
-    private inline fun <T> enumOrDefault(
+    private fun <T> enumOrDefault(
         values: List<T>,
         ordinal: Int,
         fallback: T,

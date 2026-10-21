@@ -397,13 +397,20 @@ private fun ResultSet.doubleOrNull(column: String): Double? = getDouble(column).
 private class JdbcCameraQuery(
     private val connection: Connection,
 ) : CameraQuery {
-    override fun inBox(box: BoundingBox): List<Camera> =
-        connection
-            .prepareStatement(
+    override fun inBox(box: BoundingBox): List<Camera> {
+        val sql =
+            if (box.crossesAntimeridian) {
                 "SELECT id, source, external_id, lat, lon, limit_kmh, kind, facing_deg, " +
                     "dir_count, operator, source_detail, check_date FROM camera " +
-                    "WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?",
-            ).use { ps ->
+                    "WHERE lat BETWEEN ? AND ? AND (lon >= ? OR lon <= ?)"
+            } else {
+                "SELECT id, source, external_id, lat, lon, limit_kmh, kind, facing_deg, " +
+                    "dir_count, operator, source_detail, check_date FROM camera " +
+                    "WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?"
+            }
+        return connection
+            .prepareStatement(sql)
+            .use { ps ->
                 ps.setDouble(1, box.minLat)
                 ps.setDouble(2, box.maxLat)
                 ps.setDouble(3, box.minLon)
@@ -414,6 +421,7 @@ private class JdbcCameraQuery(
                     out
                 }
             }
+    }
 
     private fun readCameraRow(rs: ResultSet): Camera =
         CameraMappers.toDomain(
