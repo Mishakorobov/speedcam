@@ -33,7 +33,7 @@ and re-specified explicitly. The result is roughly 3,000–4,000 lines of Kotlin
 | 4 | Foreground service and location pipeline | **done and verified on API 36** — fused provider with fallback, watchdogs, resurrection |
 | 5 | Sound, gager tone, speech, vibration | **done and verified on API 36** — tone plays, vibration fires, cadence throttles correctly |
 | 6 | HUD, camera list, settings | **done and verified on API 36** — overlay window, 11,430-camera browser, presets and transport |
-| 7 | Average-speed zones | **done** — corridor entry/exit state machine, odometer path integration, live HUD excess calculation, speech and tone alerts |
+| 7 | Average-speed zones | **done and verified on API 36** — corridor entry/exit state machine, odometer path integration, live HUD excess calculation, speech and tone alerts |
 | 8 | Scheduled database updates | **done** — `update-osm.bat`, change-detecting and self-verifying |
 
 ## Modules
@@ -236,6 +236,21 @@ contain.
 - `BOOT_COMPLETED` itself; only the alarm action was exercised.
 - two hours of backgrounded running, which Plan.md §8.1 requires. Sixty seconds was not two
   hours.
+
+### Verified on device — Stage 7
+
+Samsung SM-S916B, Android 16 / API 36 (`connectedDebugAndroidTest`). All 8 test cases passed:
+
+| | Result |
+| --- | --- |
+| Room `section` persistence | In-memory and disk SQLite round-trip: insert, active query and domain mapping verified |
+| Corridor entry gate | Passing gate aligned with bearing triggers `Entered`; oncoming traffic in opposite direction is rejected |
+| Live progress & arithmetic | Consecutive fixes integrate odometer path distance, computing live average speed and excess |
+| Corridor exit gate | Reaching exit point triggers `Exited` with final average speed computed as `(s1 - s0) / (t1 - t0)` |
+| Clean abort conditions | Aborts cleanly on route deviation (`OFF_CORRIDOR`), traversal timeout (`TIMEOUT`), or signal loss (`GPS_LOST`) |
+| Pipeline integration | `DetectionPipeline` with `FixArbiter` arbitrates consecutive fused fixes through corridor lifecycle |
+| Media alerts | `MediaAlertEngine` executes corridor audio tones, speech cues and vibration without exceptions |
+| HUD & state mapping | `SectionEvent.toSectionUiState()` updates `DetectionState` and correctly asserts `overLimit` |
 
 **Tests.** 293 in total. 135 use synthetic fixtures; the rest exercise the seam against the
 real database — 11 drive the actual engine over rows really parsed out of OpenStreetMap, 15
