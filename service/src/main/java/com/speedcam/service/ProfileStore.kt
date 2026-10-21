@@ -174,6 +174,16 @@ class ProfileStore(
         get() = prefs.getBoolean(KEY_PIP_AUTO_ENTER, true)
         set(value) = prefs.edit().putBoolean(KEY_PIP_AUTO_ENTER, value).apply()
 
+    /** Whether to broadcast speed and radar hazard alerts to Android car launchers (FCC, Agama, etc.). */
+    var launcherBroadcastEnabled: Boolean
+        get() = prefs.getBoolean(KEY_LAUNCHER_BROADCAST_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_LAUNCHER_BROADCAST_ENABLED, value).apply()
+
+    /** Automatically start detection when car Head Unit boots or wakes from deep sleep (ACC ON). */
+    var headUnitAutoStart: Boolean
+        get() = prefs.getBoolean(KEY_HEAD_UNIT_AUTO_START, true)
+        set(value) = prefs.edit().putBoolean(KEY_HEAD_UNIT_AUTO_START, value).apply()
+
     /**
      * The profile detection runs under right now.
      *
@@ -223,6 +233,8 @@ class ProfileStore(
         const val KEY_BLUETOOTH_STOP_DELAY_SECONDS = "bluetoothStopDelaySeconds"
         const val KEY_PIP_ENABLED = "pipEnabled"
         const val KEY_PIP_AUTO_ENTER = "pipAutoEnter"
+        const val KEY_LAUNCHER_BROADCAST_ENABLED = "launcherBroadcastEnabled"
+        const val KEY_HEAD_UNIT_AUTO_START = "headUnitAutoStart"
         const val DEFAULT_STOP_DELAY_SECONDS = 20
     }
 }

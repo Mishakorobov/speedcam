@@ -92,6 +92,8 @@ data class SettingsState(
     val pairedBluetoothDevices: List<Pair<String, String>> = emptyList(),
     val pipEnabled: Boolean = true,
     val pipAutoEnter: Boolean = true,
+    val launcherBroadcastEnabled: Boolean = true,
+    val headUnitAutoStart: Boolean = true,
 )
 
 /** The settings screen's writes, bundled for reviewability. */
@@ -118,6 +120,8 @@ data class SettingsActions(
     val onBluetoothStopDelaySecondsChange: (Int) -> Unit = {},
     val onPipEnabledChange: (Boolean) -> Unit = {},
     val onPipAutoEnterChange: (Boolean) -> Unit = {},
+    val onLauncherBroadcastEnabledChange: (Boolean) -> Unit = {},
+    val onHeadUnitAutoStartChange: (Boolean) -> Unit = {},
 )
 
 /**
@@ -141,6 +145,7 @@ fun SettingsScreen(
     ) {
         DetectionSectionCard(state = state, actions = actions)
         BluetoothAutomationSectionCard(state = state, actions = actions)
+        AutomotiveIntegrationSectionCard(state = state, actions = actions)
         AudioSectionCard(state = state, actions = actions)
         HudSectionCard(state = state, actions = actions)
         PipSectionCard(state = state, actions = actions)
@@ -343,6 +348,31 @@ private fun BluetoothDeviceSelector(
                 label = { Text(name) },
             )
         }
+    }
+}
+
+@Composable
+private fun AutomotiveIntegrationSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "Car Head Unit & Android Auto",
+        icon = Icons.Default.DirectionsCar,
+    ) {
+        SettingsToggleItem(
+            title = "Head Unit Launcher Broadcasts",
+            subtitle = "Send speed and camera alerts to FCC, Agama, CarWebGuru and car launchers",
+            checked = state.launcherBroadcastEnabled,
+            onCheckedChange = actions.onLauncherBroadcastEnabledChange,
+        )
+
+        SettingsToggleItem(
+            title = "Head Unit ACC Auto-Start",
+            subtitle = "Start radar when car powers on (ACC ON / Boot) and pause on sleep (ACC OFF)",
+            checked = state.headUnitAutoStart,
+            onCheckedChange = actions.onHeadUnitAutoStartChange,
+        )
     }
 }
 

@@ -119,6 +119,8 @@ class MainActivity : ComponentActivity() {
     private var isInPipMode by mutableStateOf(false)
     private var pipEnabled by mutableStateOf(true)
     private var pipAutoEnter by mutableStateOf(true)
+    private var launcherBroadcastEnabled by mutableStateOf(true)
+    private var headUnitAutoStart by mutableStateOf(true)
 
     private val pipActionReceiver =
         object : BroadcastReceiver() {
@@ -156,6 +158,8 @@ class MainActivity : ComponentActivity() {
         isInPipMode = isInPictureInPictureMode
         pipEnabled = profiles.pipEnabled
         pipAutoEnter = profiles.pipAutoEnter
+        launcherBroadcastEnabled = profiles.launcherBroadcastEnabled
+        headUnitAutoStart = profiles.headUnitAutoStart
         useContraCamDb = profiles.useContraCamDb
         autoStartOnBluetooth = profiles.autoStartOnBluetooth
         autoStopOnBluetooth = profiles.autoStopOnBluetooth
@@ -289,6 +293,8 @@ class MainActivity : ComponentActivity() {
                     pairedBluetoothDevices = bondedDevices,
                     pipEnabled = pipEnabled,
                     pipAutoEnter = pipAutoEnter,
+                    launcherBroadcastEnabled = launcherBroadcastEnabled,
+                    headUnitAutoStart = headUnitAutoStart,
                 ),
             actions = buildShellActions(),
         )
@@ -351,6 +357,14 @@ class MainActivity : ComponentActivity() {
                 profiles.pipAutoEnter = it
                 PipHelper.updatePipParams(this, DetectionState.state.value, profiles)
             },
+            onLauncherBroadcastEnabledChange = {
+                launcherBroadcastEnabled = it
+                profiles.launcherBroadcastEnabled = it
+            },
+            onHeadUnitAutoStartChange = {
+                headUnitAutoStart = it
+                profiles.headUnitAutoStart = it
+            },
         )
 
     private fun toggleContraCamDb(enabled: Boolean) {
@@ -412,6 +426,8 @@ class MainActivity : ComponentActivity() {
         bluetoothStopDelaySeconds = profiles.bluetoothStopDelaySeconds
         pipEnabled = profiles.pipEnabled
         pipAutoEnter = profiles.pipAutoEnter
+        launcherBroadcastEnabled = profiles.launcherBroadcastEnabled
+        headUnitAutoStart = profiles.headUnitAutoStart
         refreshCameraList()
         HudOverlayManager.sync(this)
         if (profiles.isEnabled && fineLocationGranted) ServiceController.start(this)
@@ -580,6 +596,8 @@ private data class ShellState(
     val pairedBluetoothDevices: List<Pair<String, String>> = emptyList(),
     val pipEnabled: Boolean = true,
     val pipAutoEnter: Boolean = true,
+    val launcherBroadcastEnabled: Boolean = true,
+    val headUnitAutoStart: Boolean = true,
 )
 
 /** What the shell does, one callback per screen-level action. */
@@ -606,6 +624,8 @@ private data class ShellActions(
     val onEnterPip: () -> Unit,
     val onPipEnabledChange: (Boolean) -> Unit,
     val onPipAutoEnterChange: (Boolean) -> Unit,
+    val onLauncherBroadcastEnabledChange: (Boolean) -> Unit,
+    val onHeadUnitAutoStartChange: (Boolean) -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -767,6 +787,8 @@ private fun buildSettingsState(state: ShellState): SettingsState {
         pairedBluetoothDevices = state.pairedBluetoothDevices,
         pipEnabled = state.pipEnabled,
         pipAutoEnter = state.pipAutoEnter,
+        launcherBroadcastEnabled = state.launcherBroadcastEnabled,
+        headUnitAutoStart = state.headUnitAutoStart,
     )
 }
 
@@ -801,6 +823,8 @@ private fun buildSettingsActions(
         onBluetoothStopDelaySecondsChange = actions.onBluetoothStopDelaySecondsChange,
         onPipEnabledChange = actions.onPipEnabledChange,
         onPipAutoEnterChange = actions.onPipAutoEnterChange,
+        onLauncherBroadcastEnabledChange = actions.onLauncherBroadcastEnabledChange,
+        onHeadUnitAutoStartChange = actions.onHeadUnitAutoStartChange,
     )
 
 @Composable

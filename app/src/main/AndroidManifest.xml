@@ -52,6 +52,15 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.CAR_LAUNCHER" />
+                <category android:name="android.intent.category.CAR_DOCK" />
+                <category android:name="android.intent.category.CAR_MODE" />
+            </intent-filter>
+
+            <!-- Automotive launcher direct launch -->
+            <intent-filter>
+                <action android:name="com.speedcam.action.LAUNCH_DASHBOARD" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
             <!-- Navigation apps hand off destinations to us. -->
@@ -89,6 +98,40 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_dashboard_info" />
+        </receiver>
+
+        <!-- Android Auto and Automotive OS Descriptor -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="1" />
+
+        <!-- Android Auto CarAppService -->
+        <service
+            android:name=".car.SpeedCamCarAppService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.NAVIGATION" />
+            </intent-filter>
+        </service>
+
+        <!-- Automotive Head Unit (ГУ) Ignition & Power Receiver (ACC ON / ACC OFF / QuickBoot) -->
+        <receiver
+            android:name="com.speedcam.service.CarHeadUnitReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.syu.ms.ACC_ON" />
+                <action android:name="com.syu.ms.ACC_OFF" />
+                <action android:name="android.intent.action.ACTION_SHUTDOWN" />
+            </intent-filter>
         </receiver>
 
     </application>

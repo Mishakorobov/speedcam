@@ -121,6 +121,7 @@ class DetectionService : Service() {
         store?.close()
         store = null
         DetectionState.update { it.copy(running = false, hasFix = false) }
+        CarLauncherBroadcaster.broadcast(this, DetectionState.state.value, profiles)
         super.onDestroy()
     }
 
@@ -244,6 +245,7 @@ class DetectionService : Service() {
                 stationaryThrottled = adaptiveWatchdog.currentRate == PollingRate.STATIONARY,
             )
         }
+        CarLauncherBroadcaster.broadcast(this, DetectionState.state.value, profiles)
     }
 
     /** Pushes everything that does not change from fix to fix. */

@@ -166,6 +166,7 @@ dependencies {
     implementation(project(":service"))
 
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.car.app)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
