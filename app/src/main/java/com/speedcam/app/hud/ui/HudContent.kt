@@ -111,8 +111,14 @@ fun HudContent(
 @Composable
 private fun SectionReadout(section: com.speedcam.service.SectionUiState?) {
     if (section == null) return
+    val text =
+        if (section.completed) {
+            "AVG ${section.averageKmh.roundToInt()} km/h · LIMIT ${section.limitKmh}"
+        } else {
+            "~${section.averageKmh.roundToInt()} km/h · ${section.remainingM.roundToInt()} m"
+        }
     Text(
-        text = "~${section.averageKmh.roundToInt()} km/h · ${section.remainingM.roundToInt()} m",
+        text = text,
         color = Color.White.copy(alpha = 0.85f),
         fontSize = 10.sp,
         modifier = Modifier.padding(top = 2.dp),

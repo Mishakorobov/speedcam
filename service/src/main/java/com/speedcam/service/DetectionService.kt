@@ -184,11 +184,19 @@ class DetectionService : Service() {
         sectionEvent: SectionEvent?,
     ) {
         val views = hazards.toHazardViews()
+        val now = System.currentTimeMillis()
         DetectionState.update { previous ->
             val nextSection =
                 when {
-                    sectionEvent != null -> sectionEvent.toSectionUiState()
-                    previous.activeSection?.completed == true -> null
+                    sectionEvent != null -> sectionEvent.toSectionUiState(now)
+                    previous.activeSection?.completed == true -> {
+                        val completedAt = previous.activeSection.completedAtMs ?: 0L
+                        if (now - completedAt < COMPLETED_SECTION_LINGER_MS) {
+                            previous.activeSection
+                        } else {
+                            null
+                        }
+                    }
                     else -> previous.activeSection
                 }
             previous.copy(
@@ -206,6 +214,8 @@ class DetectionService : Service() {
     private suspend fun publishState(cameraStore: CameraStore) {
         val profile = profiles.profile()
         val count = runCatching { cameraStore.cameraCount() }.getOrDefault(0)
+        val sections = runCatching { cameraStore.sectionCount() }.getOrDefault(0)
+        val builtAt = cameraStore.databaseBuiltAt()
         // Recorded so the settings screen and the list header have a number to show. Anything
         // else leaves it at zero forever, which reads as "no cameras" rather than "unknown".
         if (count > 0) profiles.knownCameraCount = count
@@ -214,6 +224,8 @@ class DetectionService : Service() {
             DetectionUiState(
                 running = true,
                 cameraCount = count,
+                sectionCount = sections,
+                databaseBuiltAt = builtAt,
                 profileName = profiles.quickSetting.displayName,
                 headsetConnected = hasConnectedAudioDevice(this),
                 muted = !profile.beepEnabled && !profile.voice && !profile.vibro,
@@ -445,6 +457,7 @@ class DetectionService : Service() {
         private const val TAG = "DetectionService"
         private const val WATCHDOG_TICK_MS = 1_000L
         private const val LOG_EVERY_N_FIXES = 30L
+        private const val COMPLETED_SECTION_LINGER_MS = 6_000L
 
         /** Day begins at 07:00 by this rule. See [isNight]. */
         private const val DAY_START_HOUR = 7

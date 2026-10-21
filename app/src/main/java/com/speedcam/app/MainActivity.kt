@@ -327,6 +327,8 @@ private fun AppShell(
                             hudPermissionGranted = state.hudPermissionGranted,
                             silentDuringCall = profiles.silentDuringCall,
                             cameraCount = state.ui.cameraCount,
+                            sectionCount = state.ui.sectionCount,
+                            databaseBuiltAt = state.ui.databaseBuiltAt,
                             dataSourceNote = DATA_SOURCE_NOTE,
                         ),
                     actions =

@@ -40,6 +40,8 @@ data class SettingsState(
     val hudPermissionGranted: Boolean,
     val silentDuringCall: Boolean,
     val cameraCount: Int,
+    val sectionCount: Int = 0,
+    val databaseBuiltAt: String? = null,
     val dataSourceNote: String,
 )
 
@@ -101,7 +103,17 @@ fun SettingsScreen(
 
         Text("Data source", style = MaterialTheme.typography.titleSmall)
         Text(text = state.dataSourceNote, style = MaterialTheme.typography.bodySmall)
-        Text(text = "${state.cameraCount} cameras loaded", style = MaterialTheme.typography.bodyMedium)
+        val countsText =
+            if (state.sectionCount > 0) {
+                "${state.cameraCount} cameras, ${state.sectionCount} SPECS corridors loaded"
+            } else {
+                "${state.cameraCount} cameras loaded"
+            }
+        Text(text = countsText, style = MaterialTheme.typography.bodyMedium)
+        state.databaseBuiltAt?.takeIf { it.isNotBlank() }?.let { builtAt ->
+            val dateLabel = builtAt.take(10)
+            Text(text = "Database updated: $dateLabel", style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 

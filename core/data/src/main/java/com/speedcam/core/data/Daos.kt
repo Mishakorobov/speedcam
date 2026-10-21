@@ -103,6 +103,9 @@ interface SectionDao {
     @Query("SELECT * FROM section WHERE active = 1")
     suspend fun active(): List<SectionEntity>
 
+    @Query("SELECT COUNT(*) FROM section")
+    suspend fun count(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(sections: List<SectionEntity>)
 

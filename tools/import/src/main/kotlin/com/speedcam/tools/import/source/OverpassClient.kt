@@ -284,40 +284,68 @@ object OverpassJson {
      */
     fun parseSections(json: String): List<SectionRecord> {
         val byId = elements(json).associateBy { it.double("id")?.toLong() }
-
-        return elements(json).mapNotNull { relation ->
-            // The element's own `type` is the OSM element type ("relation"). The enforcement
-            // semantics live in its tags, so both must be checked.
-            val tags = relation.tags()
-            if (relation.string("type") != "relation") return@mapNotNull null
-            if (tags["type"] != "enforcement") return@mapNotNull null
-            if (tags["enforcement"] != "average_speed") return@mapNotNull null
-
-            val members = relation.array("members") ?: return@mapNotNull null
-
-            val endpoints =
-                members.mapNotNull { member ->
-                    val ref = member.double("ref")?.toLong() ?: return@mapNotNull null
-                    member.string("role") to byId[ref]
-                }
-
-            val fromNode = endpoints.firstOrNull { it.first == "from" }?.second
-            val toNode = endpoints.firstOrNull { it.first == "to" }?.second
-            if (fromNode == null || toNode == null) return@mapNotNull null
-
-            val limit = OverpassMapper.parseLimit(tags["maxspeed"]) ?: return@mapNotNull null
-            val fromLat = fromNode.double("lat") ?: return@mapNotNull null
-            val fromLon = fromNode.double("lon") ?: return@mapNotNull null
-            val toLat = toNode.double("lat") ?: return@mapNotNull null
-            val toLon = toNode.double("lon") ?: return@mapNotNull null
-
-            SectionRecord(
-                from = LatLon(fromLat, fromLon),
-                to = LatLon(toLat, toLon),
-                limitKmh = limit,
-            )
-        }
+        return elements(json)
+            .asSequence()
+            .filter(::isAverageSpeedRelation)
+            .mapNotNull { buildSection(it, byId) }
+            .toList()
     }
+
+    private fun isAverageSpeedRelation(el: JsonObject): Boolean {
+        if (el.string("type") != "relation") return false
+        val tags = el.tags()
+        return tags["type"] == "enforcement" && tags["enforcement"] == "average_speed"
+    }
+
+    private fun buildSection(
+        relation: JsonObject,
+        byId: Map<Long?, JsonObject>,
+    ): SectionRecord? {
+        val (fromNode, toNode) = extractEndpoints(relation, byId) ?: return null
+        val limit = resolveSectionLimit(relation.tags(), fromNode.tags(), toNode.tags()) ?: return null
+        val (from, to) = extractEndpointsCoordinates(fromNode, toNode) ?: return null
+        return SectionRecord(from, to, limit)
+    }
+
+    private fun extractEndpointsCoordinates(
+        fromNode: JsonObject,
+        toNode: JsonObject,
+    ): Pair<LatLon, LatLon>? {
+        val from = extractPoint(fromNode) ?: return null
+        val to = extractPoint(toNode) ?: return null
+        return if (from != to) from to to else null
+    }
+
+    private fun extractEndpoints(
+        relation: JsonObject,
+        byId: Map<Long?, JsonObject>,
+    ): Pair<JsonObject, JsonObject>? {
+        val members = relation.array("members") ?: return null
+        var from: JsonObject? = null
+        var to: JsonObject? = null
+        for (m in members) {
+            val role = m.string("role")
+            val ref = m.double("ref")?.toLong()
+            if (role == "from" && from == null) from = byId[ref]
+            if (role == "to" && to == null) to = byId[ref]
+        }
+        return if (from != null && to != null) from to to else null
+    }
+
+    private fun extractPoint(node: JsonObject): LatLon? {
+        val lat = node.double("lat") ?: return null
+        val lon = node.double("lon") ?: return null
+        return LatLon(lat, lon)
+    }
+
+    private fun resolveSectionLimit(
+        relTags: Map<String, String>,
+        fromTags: Map<String, String>,
+        toTags: Map<String, String>,
+    ): Int? =
+        OverpassMapper.parseLimit(relTags["maxspeed"])
+            ?: OverpassMapper.parseLimit(fromTags["maxspeed"])
+            ?: OverpassMapper.parseLimit(toTags["maxspeed"])
 
     private fun elements(json: String): List<JsonObject> {
         val root = JsonParser.parseString(json).asJsonObject

@@ -174,7 +174,7 @@ class AverageSpeedTracker(
 
             distToExit <= gateRadiusM -> {
                 activeSession = null
-                val traveledM = odometerM - session.s0
+                val traveledM = max(0.0, odometerM - session.s0)
                 val avgKmh = (traveledM / (elapsedMs / 1_000.0)) * MS_TO_KMH
                 SectionEvent.Exited(
                     section = section,
@@ -186,7 +186,7 @@ class AverageSpeedTracker(
             }
 
             else -> {
-                val traveledM = odometerM - session.s0
+                val traveledM = max(0.0, odometerM - session.s0)
                 val avgKmh = (traveledM / (elapsedMs / 1_000.0)) * MS_TO_KMH
                 SectionEvent.Progress(
                     section = section,

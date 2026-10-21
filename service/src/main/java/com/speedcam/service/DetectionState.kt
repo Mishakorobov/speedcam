@@ -26,6 +26,7 @@ data class SectionUiState(
     val averageKmh: Double,
     val remainingM: Double,
     val completed: Boolean = false,
+    val completedAtMs: Long? = null,
 ) {
     val overLimit: Boolean get() = limitKmh > 0 && averageKmh > limitKmh
 }
@@ -49,6 +50,8 @@ data class DetectionUiState(
     val activeSection: SectionUiState? = null,
     val gpsStatus: GpsStatus = GpsStatus.HEALTHY,
     val cameraCount: Int = 0,
+    val sectionCount: Int = 0,
+    val databaseBuiltAt: String? = null,
     val profileName: String = "",
     val headsetConnected: Boolean = false,
     val muted: Boolean = false,
@@ -111,7 +114,7 @@ fun List<Hazard>.toHazardViews(limit: Int = 2): List<HazardView> =
     }
 
 /** Maps a [SectionEvent] into the UI state shown by the HUD and status screen. */
-fun SectionEvent.toSectionUiState(): SectionUiState? =
+fun SectionEvent.toSectionUiState(nowMs: Long = System.currentTimeMillis()): SectionUiState? =
     when (this) {
         is SectionEvent.Entered ->
             SectionUiState(
@@ -135,6 +138,7 @@ fun SectionEvent.toSectionUiState(): SectionUiState? =
                 averageKmh = averageKmh,
                 remainingM = 0.0,
                 completed = true,
+                completedAtMs = nowMs,
             )
 
         is SectionEvent.Aborted -> null

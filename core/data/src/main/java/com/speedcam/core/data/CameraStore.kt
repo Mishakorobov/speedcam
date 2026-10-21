@@ -88,6 +88,12 @@ class CameraStore(
         sections = SectionMappers.toDomainList(rows)
     }
 
+    /** Returns the timestamp when the active database was built/imported, or null if unknown. */
+    suspend fun databaseBuiltAt(): String? = runCatching { metaDao.get("built_at") }.getOrNull()
+
+    /** Returns how many SPECS corridors are loaded in the database. */
+    suspend fun sectionCount(): Int = runCatching { database.sectionDao().count() }.getOrDefault(0)
+
     /** Records a block at [position] and applies it immediately. */
     suspend fun block(
         position: com.speedcam.core.geo.LatLon,
