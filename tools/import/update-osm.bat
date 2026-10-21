@@ -16,6 +16,7 @@ rem
 rem  Usage:
 rem    update-osm.bat                 full check and update
 rem    update-osm.bat --force         refetch every district, ignoring the manifest
+rem    update-osm.bat --rebuild       rebuild database from local extracts without refetching
 rem    update-osm.bat --verify        verify the existing database and exit
 rem
 rem  Overridable via environment: OSM_DIR, DATA_DIR, SPEEDCAM_FILE
@@ -37,9 +38,13 @@ set "DATA_DIR=%DATA_DIR%"
 if "%DATA_DIR%"=="" set "DATA_DIR=%PROJECT%\data"
 set "SPEEDCAM_FILE=%SPEEDCAM_FILE%"
 
-set "JDK=%TOOLS%\jdk17"
-set "SDK=%TOOLS%\android-sdk"
-set "SQLITE=%SDK%\platform-tools\sqlite3.exe"
+if "%JDK%"=="" (
+    if defined JAVA_HOME (set "JDK=%JAVA_HOME%") else (set "JDK=%TOOLS%\jdk17")
+)
+if "%SDK%"=="" (
+    if defined ANDROID_HOME (set "SDK=%ANDROID_HOME%") else (set "SDK=%TOOLS%\android-sdk")
+)
+if "%SQLITE%"=="" set "SQLITE=%SDK%\platform-tools\sqlite3.exe"
 set "GRADLE=%PROJECT%\gradlew.bat"
 set "WORKER=%~dp0update-osm.ps1"
 
@@ -49,6 +54,7 @@ set "MANIFEST_IDENTITY=0585e653089d42d2ca2c716b9f1541ac"
 
 set "MODE=check"
 if /I "%~1"=="--force"   set "MODE=force"
+if /I "%~1"=="--rebuild" set "MODE=rebuild"
 if /I "%~1"=="--verify"  set "MODE=verify"
 
 rem --- environment -------------------------------------------------------------
@@ -68,6 +74,7 @@ echo.
 call :preflight || goto :fail
 
 if "%MODE%"=="verify" goto :verify_only
+if "%MODE%"=="rebuild" goto :build_candidate
 
 rem --- step 1: fetch what changed ----------------------------------------------
 echo [1/4] Checking for upstream changes...
@@ -105,6 +112,7 @@ if "!UPSTREAM!"=="fresh" if exist "%DB%" (
     exit /b 0
 )
 
+:build_candidate
 rem --- step 2: build a candidate database --------------------------------------
 echo.
 echo [2/4] Building a candidate database...
@@ -119,7 +127,7 @@ if defined SPEEDCAM_FILE if exist "%SPEEDCAM_FILE%" (
     echo   including SpeedCam corpus: %SPEEDCAM_FILE%
 )
 
-call "%GRADLE%" !GRADLE_ARGS! --console=plain
+call "%GRADLE%" -p "%PROJECT%" !GRADLE_ARGS! --console=plain
 if errorlevel 1 (
     echo.
     echo   ERROR: the import failed. The existing database was left untouched.
@@ -156,6 +164,10 @@ if "!CANDIDATE_CAMERAS!"=="0" (
     echo   ERROR: the candidate holds no cameras. The existing one was left untouched.
     exit /b 1
 )
+
+call :query "SELECT COUNT(*) FROM section;" "%STAGE%"
+set "CANDIDATE_SECTIONS=!RESULT!"
+echo   sections: !CANDIDATE_SECTIONS!
 
 call :query "SELECT identity_hash FROM room_master_table WHERE id=42;" "%STAGE%"
 set "CANDIDATE_HASH=!RESULT!"
@@ -200,7 +212,13 @@ if not exist "%DB%" (
     exit /b 1
 )
 call :report_db
-if "!INTEGRITY!"=="ok" (echo   Result: OK & exit /b 0) || (echo   Result: CORRUPT & exit /b 1)
+if /I "!INTEGRITY!"=="ok" (
+    echo   Result: OK
+    exit /b 0
+) else (
+    echo   Result: CORRUPT
+    exit /b 1
+)
 
 rem -----------------------------------------------------------------------------
 :preflight
@@ -245,6 +263,7 @@ set "INTEGRITY=unknown"
 set "CAMERAS=0"
 set "LIMITS=0"
 set "FACING=0"
+set "SECTIONS=0"
 set "BUILT=never"
 set "DBSIZE=unknown"
 
@@ -265,6 +284,9 @@ if exist "%DB%" if exist "%SQLITE%" (
     call :query "SELECT COUNT(*) FROM camera WHERE facing_deg IS NOT NULL;" "%DB%"
     if defined RESULT set "FACING=!RESULT!"
 
+    call :query "SELECT COUNT(*) FROM section;" "%DB%"
+    if defined RESULT set "SECTIONS=!RESULT!"
+
     call :query "SELECT value FROM meta WHERE key='built_at';" "%DB%"
     if defined RESULT set "BUILT=!RESULT!"
 )
@@ -273,11 +295,12 @@ echo.
 echo   database : %DB%
 if exist "%DB%" (
     call :mbsize
-    echo     built  : %BUILT%
-    echo     size   : %DBSIZE% ^(%CAMERAS% cameras^)
-    echo     limits : %LIMITS% of %CAMERAS% records carry a speed limit
-    echo     facing : %FACING% of %CAMERAS% records carry a direction
-    echo     health : %INTEGRITY%
+    echo     built   : !BUILT!
+    echo     size    : !DBSIZE! ^(!CAMERAS! cameras^)
+    echo     limits  : !LIMITS! of !CAMERAS! records carry a speed limit
+    echo     facing  : !FACING! of !CAMERAS! records carry a direction
+    echo     sections: !SECTIONS! average-speed corridors
+    echo     health  : !INTEGRITY!
 ) else (
     echo     not present
 )

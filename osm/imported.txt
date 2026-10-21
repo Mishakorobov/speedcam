@@ -1,10 +1,10 @@
-kaliningrad=a980f3092c3915b515d61d7d4a0adcd4
+kaliningrad=ec26bba966c035803fd89103a90695c3
 crimean-fed-district=b5de850100ff2c75d2944c28e60ebf49
 north-caucasus-fed-district=e03aedad89b8d218fdbd1be28f60bb42
-south-fed-district=2fe3d4ad6f9738a2341a8bd7dfad310d
-far-eastern-fed-district=17644b20a71d11c2f82112823b844b02
+south-fed-district=349001c80daa90f9b7c5b725255c90e8
+far-eastern-fed-district=12c157e042e1ffbf23108d9746ef920f
 ural-fed-district=b7b81a4e00e3ffb9b287d278f4187ce4
 siberian-fed-district=7fd47e9bf25cb9162c01c8c700997213
 northwestern-fed-district=991c626bc4d285d7baeb44d5e0bfc5cf
 volga-fed-district=77a6abb6ba82d749bdc14bffc7176fd8
-central-fed-district=6049becb7ae21ead98c265c5f30c2404
+central-fed-district=b00568fd12232adc6f715351e495bed6
