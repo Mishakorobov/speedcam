@@ -61,6 +61,7 @@ data class SettingsState(
     val captureDistanceKm: Double,
     val transport: TransportProfile,
     val hudEnabled: Boolean,
+    val hudAutoHide: Boolean = false,
     val hudPermissionGranted: Boolean,
     val outputMode: OutputMode = OutputMode.STANDARD,
     val silentDuringCall: Boolean,
@@ -90,6 +91,7 @@ data class SettingsActions(
     val onCaptureDistanceChange: (Double) -> Unit = {},
     val onTransportChange: (TransportProfile) -> Unit = {},
     val onHudEnabledChange: (Boolean) -> Unit = {},
+    val onHudAutoHideChange: (Boolean) -> Unit = {},
     val onRequestHudPermission: () -> Unit = {},
     val onResetHudPosition: () -> Unit = {},
     val onOutputModeChange: (OutputMode) -> Unit = {},
@@ -245,6 +247,13 @@ private fun HudSectionCard(
             subtitle = "Displays floating speedometer and radar warnings over navigation apps",
             checked = state.hudEnabled,
             onCheckedChange = actions.onHudEnabledChange,
+        )
+
+        SettingsToggleItem(
+            title = "Dim on Clear Road",
+            subtitle = "Reduces HUD opacity when no hazards or cameras are nearby",
+            checked = state.hudAutoHide,
+            onCheckedChange = actions.onHudAutoHideChange,
         )
 
         if (!state.hudPermissionGranted) {

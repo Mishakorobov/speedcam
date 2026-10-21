@@ -1,10 +1,9 @@
 package com.speedcam.app.hud.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,15 +19,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,16 +49,10 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun HudContent(
-    onDragTo: (x: Int, y: Int) -> Unit,
-    onCommitDrag: () -> Unit,
-    onBlock: () -> Unit,
-    onMute: () -> Unit,
-    onReport: () -> Unit = {},
+    isDragging: Boolean = false,
+    autoDimOnClearRoad: Boolean = false,
 ) {
     val state by DetectionState.state.collectAsStateWithLifecycle()
-
-    var origin by remember { mutableStateOf(Pair(0, 0)) }
-    var dragging by remember { mutableStateOf(false) }
 
     val isOverLimit = state.overLimit
     val backgroundColor by animateColorAsState(
@@ -71,47 +61,27 @@ fun HudContent(
     )
     val borderColor = if (isOverLimit) SpeedDanger else HudOverlayBorder
 
+    val isRoadClear = state.nearest == null && state.activeSection == null
+    val targetAlpha = if (autoDimOnClearRoad && isRoadClear) 0.45f else 1.0f
+    val alpha by animateFloatAsState(targetValue = targetAlpha, label = "HudAlpha")
+
     Box(
         modifier =
             Modifier
+                .graphicsLayer(alpha = alpha)
                 .shadow(12.dp, RoundedCornerShape(18.dp))
                 .clip(RoundedCornerShape(18.dp))
                 .background(backgroundColor)
                 .border(1.5.dp, borderColor, RoundedCornerShape(18.dp))
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-                .pointerInput(state.nearest?.cameraId) {
-                    detectTapGestures(
-                        onTap = { onMute() },
-                        onDoubleTap = { onReport() },
-                        onLongPress = { onBlock() },
-                    )
-                }.pointerInput(state.nearest?.cameraId) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            dragging = true
-                            origin = offset.x.roundToInt() to offset.y.roundToInt()
-                        },
-                        onDragEnd = {
-                            dragging = false
-                            onCommitDrag()
-                        },
-                        onDragCancel = { dragging = false },
-                        onDrag = { change, amount ->
-                            change.consume()
-                            origin = (origin.first + amount.x.roundToInt()) to
-                                (origin.second + amount.y.roundToInt())
-                            onDragTo(origin.first, origin.second)
-                        },
-                    )
-                },
+                .padding(horizontal = 14.dp, vertical = 10.dp),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             HudCenterCluster(state = state)
             state.activeSection?.let { section ->
                 SectionReadout(section)
             }
-            if (state.muted || dragging) {
-                HudStatusFooter(muted = state.muted, dragging = dragging)
+            if (state.muted || isDragging) {
+                HudStatusFooter(muted = state.muted, dragging = isDragging)
             }
         }
     }

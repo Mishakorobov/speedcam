@@ -60,6 +60,11 @@ class ProfileStore(
         get() = prefs.getBoolean(KEY_HUD_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_HUD_ENABLED, value).apply()
 
+    /** Auto-dim floating HUD overlay when road is clear and no hazard is nearby. */
+    var hudAutoHide: Boolean
+        get() = prefs.getBoolean(KEY_HUD_AUTO_HIDE, false)
+        set(value) = prefs.edit().putBoolean(KEY_HUD_AUTO_HIDE, value).apply()
+
     /** How many cameras the last import found, shown in the settings and the list header. */
     var knownCameraCount: Int
         get() = prefs.getInt(KEY_CAMERA_COUNT, 0)
@@ -164,6 +169,7 @@ class ProfileStore(
         const val KEY_CAMERA_COUNT = "cameraCount"
         const val KEY_OUTPUT_MODE = "outputMode"
         const val KEY_HUD_ENABLED = "hudEnabled"
+        const val KEY_HUD_AUTO_HIDE = "hudAutoHide"
         const val KEY_AUTO_UPDATE_ENABLED = "autoUpdateEnabled"
         const val KEY_LAST_UPDATE_CHECK_AT = "lastUpdateCheckAt"
         const val KEY_LAST_UPDATE_STATUS = "lastUpdateStatus"

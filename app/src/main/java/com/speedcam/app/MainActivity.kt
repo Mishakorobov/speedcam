@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,7 +58,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.speedcam.app.cameras.CameraRow
 import com.speedcam.app.hud.HudOverlay
-import com.speedcam.app.hud.HudPositionStore
+import com.speedcam.app.hud.HudOverlayManager
 import com.speedcam.app.sync.DatabaseSyncWorker
 import com.speedcam.app.sync.HazardReportSyncWorker
 import com.speedcam.app.ui.components.EmptyHazardCard
@@ -94,9 +95,6 @@ import java.util.Locale
  */
 class MainActivity : ComponentActivity() {
     private val profiles by lazy { ProfileStore(this) }
-    private val hudPositions by lazy { HudPositionStore(this) }
-
-    private var hudOverlay: HudOverlay? = null
     private var store: CameraStore? = null
 
     private val cameras = MutableStateFlow<List<Camera>>(emptyList())
@@ -117,7 +115,9 @@ class MainActivity : ComponentActivity() {
         }
 
     private val overlayPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { syncHud() }
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            HudOverlayManager.sync(this)
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -200,19 +200,16 @@ class MainActivity : ComponentActivity() {
             onEnableChange = ::setDetectionEnabled,
             onUnblock = ::unblock,
             onRequestHudPermission = ::requestOverlayPermission,
-            onResetHudPosition = { hudPositions.clear() },
+            onResetHudPosition = { HudOverlayManager.resetPosition(this) },
             onAutoUpdateChange = ::toggleAutoUpdate,
             onCheckForUpdates = { DatabaseSyncWorker.triggerImmediate(this) },
             onReportCamera = ::reportCamera,
             onSyncHazardOutbox = ::syncHazardOutbox,
             onClearSyncedReports = ::clearSyncedHazards,
-            onToggleMute = ::muteNearest,
-            onBlockNearest = ::blockNearest,
-            onReportHazard = ::reportHazardFromHud,
-            onToggleHud = {
-                profiles.hudEnabled = !profiles.hudEnabled
-                syncHud()
-            },
+            onToggleMute = { HudOverlayManager.muteNearest(this) },
+            onBlockNearest = { HudOverlayManager.blockNearest(this) },
+            onReportHazard = { HudOverlayManager.reportHazard(this) },
+            onToggleHud = { HudOverlayManager.toggle(this) },
             onContraCamDbChange = ::toggleContraCamDb,
             onSyncContraCam = ::syncContraCam,
         )
@@ -270,15 +267,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         refreshCameraList()
-        // The overlay permission is granted in system settings, so this is the only place the
-        // grant can become visible.
-        syncHud()
+        HudOverlayManager.sync(this)
         if (profiles.isEnabled && fineLocationGranted) ServiceController.start(this)
-    }
-
-    override fun onDestroy() {
-        hudOverlay?.hide()
-        super.onDestroy()
     }
 
     // ------------------------------------------------------------------ loading
@@ -313,73 +303,6 @@ class MainActivity : ComponentActivity() {
             runCatching { cameraStore.unblock(LatLon(row.latitude, row.longitude)) }
                 .onFailure { Log.w(TAG, "Could not unblock: ${it.message}") }
             blocked.value = cameraStore.overrides.blocked
-        }
-    }
-
-    // ---------------------------------------------------------------------- HUD
-
-    private fun syncHud() {
-        val wanted = profiles.hudEnabled && HudOverlay.canDrawOverlays(this)
-        if (wanted && hudOverlay?.isShowing != true) {
-            hudOverlay =
-                HudOverlay(
-                    context = applicationContext,
-                    positionStore = hudPositions,
-                    onBlockNearest = ::blockNearest,
-                    onMuteNearest = ::muteNearest,
-                    onReportHazard = ::reportHazardFromHud,
-                ).also { it.show() }
-        } else if (!wanted) {
-            hudOverlay?.hide()
-            hudOverlay = null
-        }
-    }
-
-    /** Long-press on the HUD: silence this camera for good. */
-    private fun blockNearest() {
-        val cameraStore = store ?: return
-        val nearest = DetectionState.state.value.nearest ?: return
-        lifecycleScope.launch {
-            runCatching { cameraStore.block(LatLon(nearest.latitude, nearest.longitude)) }
-                .onFailure { Log.w(TAG, "Could not block: ${it.message}") }
-            blocked.value = cameraStore.overrides.blocked
-        }
-    }
-
-    /** Tap on the HUD: silence this camera for the rest of the session. */
-    private fun muteNearest() {
-        DetectionState.update { it.copy(muted = !it.muted) }
-        Log.i(TAG, "HUD mute toggled.")
-    }
-
-    /** Double-tap on the HUD: reports a hazard at the active camera or current position. */
-    private fun reportHazardFromHud() {
-        val state = DetectionState.state.value
-        val nearest = state.nearest
-        val lat = nearest?.latitude ?: state.currentLat ?: return
-        val lon = nearest?.longitude ?: state.currentLon ?: return
-
-        val report =
-            HazardReportEntity(
-                lat = lat,
-                lon = lon,
-                headingDeg = state.currentBearingDeg,
-                cameraId = nearest?.cameraId,
-                reportType =
-                    if (nearest != null) {
-                        HazardReportType.FALSE_POSITIVE.ordinal
-                    } else {
-                        HazardReportType.NEW_CAMERA.ordinal
-                    },
-                speedLimitKmh = state.activeSection?.limitKmh ?: nearest?.limitKmh,
-                comment = if (nearest != null) "Reported via HUD" else "New camera via HUD",
-            )
-
-        lifecycleScope.launch {
-            val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
-            cameraStore.submitReport(report)
-            HazardReportSyncWorker.triggerImmediate(applicationContext)
-            Toast.makeText(this@MainActivity, "Hazard report queued in outbox", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -639,6 +562,7 @@ private fun SettingsTab(
     actions: ShellActions,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val profiles = state.profiles
     SettingsScreen(
         state =
@@ -648,6 +572,7 @@ private fun SettingsTab(
                 captureDistanceKm = profiles.captureDistanceKm,
                 transport = profiles.transport,
                 hudEnabled = profiles.hudEnabled,
+                hudAutoHide = profiles.hudAutoHide,
                 hudPermissionGranted = state.hudPermissionGranted,
                 outputMode = profiles.outputMode,
                 silentDuringCall = profiles.silentDuringCall,
@@ -675,7 +600,11 @@ private fun SettingsTab(
                 onQuickSettingChange = { profiles.quickSetting = it },
                 onCaptureDistanceChange = { profiles.captureDistanceKm = it },
                 onTransportChange = { profiles.transport = it },
-                onHudEnabledChange = { profiles.hudEnabled = it },
+                onHudEnabledChange = { HudOverlayManager.setHudEnabled(context, it) },
+                onHudAutoHideChange = {
+                    profiles.hudAutoHide = it
+                    HudOverlayManager.sync(context)
+                },
                 onRequestHudPermission = actions.onRequestHudPermission,
                 onResetHudPosition = actions.onResetHudPosition,
                 onOutputModeChange = { profiles.outputMode = it },
