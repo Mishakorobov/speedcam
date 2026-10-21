@@ -61,6 +61,34 @@
             </intent-filter>
         </activity>
 
+        <!-- 1x1 Compact Quick-Toggle Home Screen Widget -->
+        <receiver
+            android:name=".widget.SpeedCamQuickToggleWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_quick_toggle_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.speedcam.app.widget.ACTION_TOGGLE_DETECTION" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quick_toggle_info" />
+        </receiver>
+
+        <!-- 2x1 Automotive Dashboard Home Screen Widget -->
+        <receiver
+            android:name=".widget.SpeedCamDashboardWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_dashboard_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.speedcam.app.widget.ACTION_TOGGLE_DETECTION" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_dashboard_info" />
+        </receiver>
+
     </application>
 
 </manifest>

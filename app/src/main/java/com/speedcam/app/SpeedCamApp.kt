@@ -5,6 +5,7 @@ import android.content.Context
 import com.speedcam.app.hud.HudOverlayManager
 import com.speedcam.app.sync.DatabaseSyncWorker
 import com.speedcam.app.sync.HazardReportSyncWorker
+import com.speedcam.app.widget.SpeedCamWidgetManager
 import com.speedcam.core.data.CameraStore
 import com.speedcam.service.ProfileStore
 
@@ -54,6 +55,7 @@ class SpeedCamApp : Application() {
         }
         HazardReportSyncWorker.schedulePeriodic(this)
         HudOverlayManager.init(this)
+        SpeedCamWidgetManager.init(this)
     }
 
     override fun onTerminate() {

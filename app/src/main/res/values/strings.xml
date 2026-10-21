@@ -5,4 +5,18 @@
     <!-- Required attribution for OpenStreetMap-derived camera data (ODbL 1.0).
          Must remain visible wherever camera data is shown. -->
     <string name="osm_attribution">Data © OpenStreetMap contributors</string>
+
+    <!-- AppWidgets -->
+    <string name="widget_quick_toggle_name">SpeedCam Quick Toggle (1x1)</string>
+    <string name="widget_quick_toggle_description">One-tap start and stop toggle for speed camera radar</string>
+    <string name="widget_dashboard_name">SpeedCam Dashboard (2x1)</string>
+    <string name="widget_dashboard_description">Live speed, nearest camera warning and one-tap radar toggle</string>
+    <string name="widget_status_on">ON</string>
+    <string name="widget_status_off">OFF</string>
+    <string name="widget_btn_start">START</string>
+    <string name="widget_btn_stop">STOP</string>
+    <string name="widget_road_clear">Road Clear</string>
+    <string name="widget_radar_inactive">SpeedCam Radar</string>
+    <string name="widget_tap_to_start">Tap START to activate</string>
+    <string name="widget_speed_unit">km/h</string>
 </resources>
