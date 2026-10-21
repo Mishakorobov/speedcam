@@ -1,37 +1,57 @@
 package com.speedcam.app
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.speedcam.app.ui.components.SettingsSectionCard
+import com.speedcam.app.ui.components.SettingsSliderItem
+import com.speedcam.app.ui.components.SettingsToggleItem
+import com.speedcam.app.ui.components.SliderItemState
+import com.speedcam.app.ui.theme.SpeedDanger
+import com.speedcam.app.ui.theme.SpeedWarning
 import com.speedcam.core.detect.QuickSetting
 import com.speedcam.core.detect.TransportProfile
 
 /**
  * Everything the settings screen reads.
- *
- * A single object rather than seventeen parameters. Compose screens that take a value and a
- * setter per field end up with a signature nobody can hold in their head, and every new
- * setting makes it worse; grouping the reads separately from the writes keeps each side
- * legible.
  */
 data class SettingsState(
     val enabled: Boolean,
@@ -49,9 +69,13 @@ data class SettingsState(
     val lastUpdateCheckAt: String? = null,
     val lastUpdateStatus: String? = null,
     val isUpdating: Boolean = false,
+    val pendingReportCount: Int = 0,
+    val lastHazardSyncAt: String? = null,
+    val lastHazardSyncStatus: String? = null,
+    val isSyncingReports: Boolean = false,
 )
 
-/** The settings screen's writes, so a caller passes one callback rather than eight. */
+/** The settings screen's writes, bundled for reviewability. */
 data class SettingsActions(
     val onEnabledChange: (Boolean) -> Unit = {},
     val onQuickSettingChange: (QuickSetting) -> Unit = {},
@@ -63,14 +87,13 @@ data class SettingsActions(
     val onSilentDuringCallChange: (Boolean) -> Unit = {},
     val onAutoUpdateChange: (Boolean) -> Unit = {},
     val onCheckForUpdates: () -> Unit = {},
+    val onSyncHazardOutbox: () -> Unit = {},
+    val onClearSyncedReports: () -> Unit = {},
 )
 
 /**
- * Settings.
- *
- * Covers what Plan.md §8.1 asks for — presets, capture distance, transport, data source,
- * auto-updates — plus the two things a driver needs before the HUD is usable: detection on,
- * and the overlay permission.
+ * Modernized Settings Screen with grouped design cards, high visual hierarchy,
+ * WCAG AA accessible touch targets, and clear descriptions.
  */
 @Composable
 fun SettingsScreen(
@@ -82,93 +105,322 @@ fun SettingsScreen(
         modifier =
             modifier
                 .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        ToggleRow("Detection", state.enabled, actions.onEnabledChange)
+        DetectionSectionCard(state = state, actions = actions)
+        AudioSectionCard(state = state, actions = actions)
+        HudSectionCard(state = state, actions = actions)
+        DatabaseSyncSectionCard(state = state, actions = actions)
+        HazardOutboxSectionCard(state = state, actions = actions)
+        AttributionSectionCard(dataSourceNote = state.dataSourceNote)
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
 
-        HorizontalDivider()
+@Composable
+private fun DetectionSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "Radar Detection & Vehicle",
+        icon = Icons.Default.Speed,
+    ) {
+        SettingsToggleItem(
+            title = "Radar Detection",
+            subtitle = "Continuously scan for speed cameras and hazards via GPS",
+            checked = state.enabled,
+            onCheckedChange = actions.onEnabledChange,
+        )
 
-        Text("Preset", style = MaterialTheme.typography.titleSmall)
-        PresetRow(state.quickSetting, actions.onQuickSettingChange)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-        HorizontalDivider()
+        Text("Detection Profile", style = MaterialTheme.typography.titleSmall)
+        PresetSelector(state.quickSetting, actions.onQuickSettingChange)
 
-        CaptureDistance(state.captureDistanceKm, actions.onCaptureDistanceChange)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-        HorizontalDivider()
+        Text("Vehicle Type", style = MaterialTheme.typography.titleSmall)
+        TransportSelector(state.transport, actions.onTransportChange)
 
-        Text("Vehicle", style = MaterialTheme.typography.titleSmall)
-        TransportRow(state.transport, actions.onTransportChange)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-        HorizontalDivider()
+        val distanceLabel =
+            if (state.captureDistanceKm <= 0.0) "Auto" else "%.2f km".format(state.captureDistanceKm)
+        SettingsSliderItem(
+            item =
+                SliderItemState(
+                    title = "Warning Distance",
+                    valueLabel = distanceLabel,
+                    value = state.captureDistanceKm.toFloat(),
+                    valueRange = 0f..3f,
+                ),
+            onValueChange = { actions.onCaptureDistanceChange(it.toDouble()) },
+        )
+    }
+}
 
-        ToggleRow("Floating HUD", state.hudEnabled, actions.onHudEnabledChange)
-        OverlayPermission(state.hudPermissionGranted, actions)
+@Composable
+private fun AudioSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "Audio & Alert Behavior",
+        icon = Icons.AutoMirrored.Filled.VolumeUp,
+    ) {
+        SettingsToggleItem(
+            title = "Silent During Calls",
+            subtitle = "Suppress voice and beeping alerts when phone call is in progress",
+            checked = state.silentDuringCall,
+            onCheckedChange = actions.onSilentDuringCallChange,
+        )
+    }
+}
 
-        HorizontalDivider()
+@Composable
+private fun HudSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "Floating HUD (Overlay)",
+        icon = Icons.Default.Layers,
+    ) {
+        SettingsToggleItem(
+            title = "Show Over Other Apps",
+            subtitle = "Displays floating speedometer and radar warnings over navigation apps",
+            checked = state.hudEnabled,
+            onCheckedChange = actions.onHudEnabledChange,
+        )
 
-        ToggleRow("Silent during a call", state.silentDuringCall, actions.onSilentDuringCallChange)
+        if (!state.hudPermissionGranted) {
+            Spacer(modifier = Modifier.height(4.dp))
+            HudPermissionWarningCard(onRequestPermission = actions.onRequestHudPermission)
+        }
 
-        HorizontalDivider()
+        OutlinedButton(
+            onClick = actions.onResetHudPosition,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Reset HUD Window Position")
+        }
+    }
+}
 
-        Text("Data source & Updates", style = MaterialTheme.typography.titleSmall)
-        Text(text = state.dataSourceNote, style = MaterialTheme.typography.bodySmall)
-        val countsText =
-            if (state.sectionCount > 0) {
-                "${state.cameraCount} cameras, ${state.sectionCount} SPECS corridors loaded"
+@Composable
+private fun DatabaseSyncSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "Camera Database & Sync",
+        icon = Icons.Default.Storage,
+    ) {
+        DatabaseStatusSurface(state = state)
+
+        SettingsToggleItem(
+            title = "Weekly Auto-Update",
+            subtitle = "Automatically download fresh camera databases over Wi-Fi",
+            checked = state.autoUpdateEnabled,
+            onCheckedChange = actions.onAutoUpdateChange,
+        )
+
+        Button(
+            onClick = actions.onCheckForUpdates,
+            enabled = !state.isUpdating,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (state.isUpdating) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Checking for updates...")
             } else {
-                "${state.cameraCount} cameras loaded"
+                Text("Check for Database Updates Now")
             }
-        Text(text = countsText, style = MaterialTheme.typography.bodyMedium)
-        state.databaseBuiltAt?.takeIf { it.isNotBlank() }?.let { builtAt ->
-            val dateLabel = builtAt.take(10)
-            Text(text = "Database build: $dateLabel", style = MaterialTheme.typography.bodySmall)
         }
-        state.lastUpdateCheckAt?.takeIf { it.isNotBlank() }?.let { checkedAt ->
-            val checkLabel = checkedAt.take(16).replace("T", " ")
-            Text(text = "Last checked: $checkLabel", style = MaterialTheme.typography.bodySmall)
-        }
-        state.lastUpdateStatus?.takeIf { it.isNotBlank() }?.let { status ->
-            Text(text = "Status: $status", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun DatabaseStatusSurface(state: SettingsState) {
+    val countsText =
+        if (state.sectionCount > 0) {
+            "${state.cameraCount} speed cameras, ${state.sectionCount} SPECS corridors loaded"
+        } else {
+            "${state.cameraCount} speed cameras loaded"
         }
 
-        ToggleRow("Weekly auto-update (Wi-Fi)", state.autoUpdateEnabled, actions.onAutoUpdateChange)
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = countsText,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            state.databaseBuiltAt?.takeIf { it.isNotBlank() }?.let { builtAt ->
+                Text(
+                    text = "Database build: ${builtAt.take(10)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            state.lastUpdateCheckAt?.takeIf { it.isNotBlank() }?.let { checkedAt ->
+                val checkLabel = checkedAt.take(16).replace("T", " ")
+                Text(
+                    text = "Last checked: $checkLabel",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            state.lastUpdateStatus?.takeIf { it.isNotBlank() }?.let { status ->
+                Text(
+                    text = "Status: $status",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HazardOutboxSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "Crowdsourced Hazard Outbox",
+        icon = Icons.Default.CloudSync,
+    ) {
+        Text(
+            text =
+                "Offline-first hazard queue. Reports submitted while driving are stored locally " +
+                    "and synced when an internet connection becomes available.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        HazardStatusSurface(state = state)
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
             Button(
-                onClick = actions.onCheckForUpdates,
-                enabled = !state.isUpdating,
+                onClick = actions.onSyncHazardOutbox,
+                enabled = !state.isSyncingReports,
+                modifier = Modifier.weight(1f),
             ) {
-                Text(if (state.isUpdating) "Checking..." else "Check for updates")
+                if (state.isSyncingReports) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Syncing...")
+                } else {
+                    Text("Sync Outbox")
+                }
+            }
+
+            OutlinedButton(
+                onClick = actions.onClearSyncedReports,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("Clear Synced")
             }
         }
     }
 }
 
 @Composable
-private fun ToggleRow(
-    label: String,
-    checked: Boolean,
-    onChange: (Boolean) -> Unit,
-) {
-    Row(
+private fun HazardStatusSurface(state: SettingsState) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.titleMedium)
-        Switch(checked = checked, onCheckedChange = onChange)
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Pending in outbox:",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color =
+                        if (state.pendingReportCount > 0) {
+                            SpeedWarning
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        },
+                ) {
+                    Text(
+                        text = "${state.pendingReportCount} report(s)",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color =
+                            if (state.pendingReportCount > 0) {
+                                Color.Black
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
+            }
+
+            state.lastHazardSyncAt?.takeIf { it.isNotBlank() }?.let { syncAt ->
+                Text(
+                    text = "Last synced: ${syncAt.take(16).replace("T", " ")}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun PresetRow(
+private fun AttributionSectionCard(dataSourceNote: String) {
+    SettingsSectionCard(
+        title = "Attribution & Legal",
+        icon = Icons.Default.Info,
+    ) {
+        Text(
+            text = dataSourceNote,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
+        Text(
+            text =
+                "ContraCam clean-room engine. Data distributed under " +
+                    "the Open Database License (ODbL 1.0).",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PresetSelector(
     selected: QuickSetting,
     onChange: (QuickSetting) -> Unit,
 ) {
@@ -184,7 +436,7 @@ private fun PresetRow(
 }
 
 @Composable
-private fun TransportRow(
+private fun TransportSelector(
     selected: TransportProfile,
     onChange: (TransportProfile) -> Unit,
 ) {
@@ -200,34 +452,47 @@ private fun TransportRow(
 }
 
 @Composable
-private fun CaptureDistance(
-    value: Double,
-    onChange: (Double) -> Unit,
-) {
-    val label = if (value <= 0.0) "Capture distance: Auto" else "Capture distance: %.2f km".format(value)
-    Text(text = label, style = MaterialTheme.typography.titleSmall)
-    Slider(
-        value = value.toFloat(),
-        onValueChange = { onChange(it.toDouble()) },
-        valueRange = 0f..3f,
-    )
-}
-
-@Composable
-private fun OverlayPermission(
-    granted: Boolean,
-    actions: SettingsActions,
-) {
-    if (granted) return
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = "The overlay needs permission to draw over other apps.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = actions.onRequestHudPermission) { Text("Grant") }
-            OutlinedButton(onClick = actions.onResetHudPosition) { Text("Reset position") }
+private fun HudPermissionWarningCard(onRequestPermission: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF261217)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, SpeedDanger.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = SpeedDanger,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = "Overlay Permission Required",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = SpeedDanger,
+                )
+            }
+            Text(
+                text =
+                    "Android requires explicit permission to draw the floating HUD widget " +
+                        "over Google Maps or Yandex Navigator.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Button(
+                onClick = onRequestPermission,
+                colors =
+                    androidx.compose.material3.ButtonDefaults
+                        .buttonColors(containerColor = SpeedDanger),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Grant Overlay Permission")
+            }
         }
     }
 }

@@ -6,6 +6,7 @@ import com.speedcam.core.detect.CameraQuery
 import com.speedcam.core.detect.DetectionEngine
 import com.speedcam.core.detect.SectionQuery
 import com.speedcam.core.detect.SectionRecord
+import kotlinx.coroutines.flow.Flow
 
 /**
  * The assembly point for the camera data layer.
@@ -33,6 +34,23 @@ class CameraStore(
     val overrideDao: OverrideDao get() = database.overrideDao()
 
     val metaDao: MetaDao get() = database.metaDao()
+
+    val hazardReportDao: HazardReportDao get() = database.hazardReportDao()
+
+    /** Submits a new crowdsourced hazard report to the local outbox. */
+    suspend fun submitReport(report: HazardReportEntity): Long {
+        val outcome = runCatching { hazardReportDao.insert(report) }
+        return outcome.getOrDefault(-1L)
+    }
+
+    /** Number of hazard reports currently waiting in the offline outbox. */
+    suspend fun pendingReportCount(): Int = runCatching { hazardReportDao.pendingCount() }.getOrDefault(0)
+
+    /** Observes the pending outbox count as a stream. */
+    fun observePendingReportCount(): Flow<Int> = hazardReportDao.observePendingCount()
+
+    /** Observes all reports stored in the local outbox. */
+    fun observeReports(): Flow<List<HazardReportEntity>> = hazardReportDao.observeAll()
 
     /**
      * The adapter is created once and reused: Room caches the generated DAO instance, so this

@@ -184,6 +184,56 @@ interface MetaDao {
     suspend fun put(row: MetaRow)
 }
 
+/** Crowdsourced hazard reports outbox DAO (AREAS_FOR_DEVELOPMENT.md [M-30]). */
+@Dao
+interface HazardReportDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(report: HazardReportEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(reports: List<HazardReportEntity>)
+
+    @Query("SELECT * FROM hazard_report WHERE id = :id")
+    suspend fun getById(id: Long): HazardReportEntity?
+
+    @Query("SELECT * FROM hazard_report WHERE status = 0 ORDER BY created_at ASC")
+    suspend fun pendingReports(): List<HazardReportEntity>
+
+    @Query("SELECT COUNT(*) FROM hazard_report WHERE status = 0")
+    suspend fun pendingCount(): Int
+
+    @Query("SELECT COUNT(*) FROM hazard_report WHERE status = 0")
+    fun observePendingCount(): Flow<Int>
+
+    @Query("SELECT * FROM hazard_report ORDER BY created_at DESC")
+    fun observeAll(): Flow<List<HazardReportEntity>>
+
+    @Query("SELECT * FROM hazard_report ORDER BY created_at DESC")
+    suspend fun allReports(): List<HazardReportEntity>
+
+    @Query("UPDATE hazard_report SET status = 1, remote_id = :remoteId WHERE id = :id")
+    suspend fun markSynced(
+        id: Long,
+        remoteId: String? = null,
+    )
+
+    @Query(
+        "UPDATE hazard_report SET attempts = attempts + 1, " +
+            "last_attempt_at = :attemptAt, status = :status WHERE id = :id",
+    )
+    suspend fun recordAttempt(
+        id: Long,
+        attemptAt: Long,
+        status: Int,
+    )
+
+    @Query("DELETE FROM hazard_report WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM hazard_report WHERE status = 1")
+    suspend fun clearSynced()
+}
+
 /**
  * Adapts [CameraDao] to the domain's [CameraQuery] contract.
  *

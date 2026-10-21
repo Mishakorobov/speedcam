@@ -8,15 +8,30 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -30,8 +45,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -41,7 +59,19 @@ import com.speedcam.app.cameras.CameraRow
 import com.speedcam.app.hud.HudOverlay
 import com.speedcam.app.hud.HudPositionStore
 import com.speedcam.app.sync.DatabaseSyncWorker
+import com.speedcam.app.sync.HazardReportSyncWorker
+import com.speedcam.app.ui.components.EmptyHazardCard
+import com.speedcam.app.ui.components.PrimaryHazardAlertCard
+import com.speedcam.app.ui.components.SecondaryHazardCard
+import com.speedcam.app.ui.components.SpecsSectionAlertCard
+import com.speedcam.app.ui.components.SpeedometerActions
+import com.speedcam.app.ui.components.SpeedometerCluster
+import com.speedcam.app.ui.theme.BrandPrimaryDark
+import com.speedcam.app.ui.theme.SpeedCamTheme
+import com.speedcam.app.ui.theme.SpeedSafe
 import com.speedcam.core.data.CameraStore
+import com.speedcam.core.data.HazardReportEntity
+import com.speedcam.core.data.HazardReportType
 import com.speedcam.core.detect.Camera
 import com.speedcam.core.geo.LatLon
 import com.speedcam.service.DetectionState
@@ -90,57 +120,90 @@ class MainActivity : ComponentActivity() {
         requestLocationThenStart()
 
         setContent {
-            val syncWorkInfos by WorkManager
-                .getInstance(this)
-                .getWorkInfosForUniqueWorkFlow(DatabaseSyncWorker.WORK_NAME_IMMEDIATE)
-                .collectAsStateWithLifecycle(initialValue = emptyList())
+            MainContent()
+        }
+    }
 
-            val isUpdating =
-                syncWorkInfos.any {
-                    it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
-                }
+    @Composable
+    private fun MainContent() {
+        val syncWorkInfos by WorkManager
+            .getInstance(this)
+            .getWorkInfosForUniqueWorkFlow(DatabaseSyncWorker.WORK_NAME_IMMEDIATE)
+            .collectAsStateWithLifecycle(initialValue = emptyList())
 
-            LaunchedEffect(syncWorkInfos) {
-                if (syncWorkInfos.any { it.state.isFinished }) {
-                    refreshCameraList()
-                }
+        val hazardWorkInfos by WorkManager
+            .getInstance(this)
+            .getWorkInfosForUniqueWorkFlow(HazardReportSyncWorker.WORK_NAME_IMMEDIATE)
+            .collectAsStateWithLifecycle(initialValue = emptyList())
+
+        val isUpdating =
+            syncWorkInfos.any {
+                it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
             }
 
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    AppShell(
-                        state =
-                            ShellState(
-                                ui = DetectionState.state.collectAsStateWithLifecycle().value,
-                                cameras = cameras.collectAsStateWithLifecycle().value,
-                                blocked = blocked.collectAsStateWithLifecycle().value,
-                                profiles = profiles,
-                                hudPermissionGranted = HudOverlay.canDrawOverlays(this),
-                                isUpdating = isUpdating,
-                            ),
-                        actions =
-                            ShellActions(
-                                onEnableChange = ::setDetectionEnabled,
-                                onUnblock = ::unblock,
-                                onRequestHudPermission = ::requestOverlayPermission,
-                                onResetHudPosition = { hudPositions.clear() },
-                                onAutoUpdateChange = { enabled ->
-                                    profiles.autoUpdateEnabled = enabled
-                                    if (enabled) {
-                                        DatabaseSyncWorker.schedulePeriodic(this@MainActivity)
-                                    } else {
-                                        DatabaseSyncWorker.cancelPeriodic(this@MainActivity)
-                                    }
-                                },
-                                onCheckForUpdates = {
-                                    DatabaseSyncWorker.triggerImmediate(this@MainActivity)
-                                },
-                            ),
-                    )
-                }
+        val isSyncingReports =
+            hazardWorkInfos.any {
+                it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED
+            }
+
+        val pendingReportCount by (store ?: SpeedCamApp.cameraStore(this))
+            .observePendingReportCount()
+            .collectAsStateWithLifecycle(initialValue = 0)
+
+        LaunchedEffect(syncWorkInfos) {
+            if (syncWorkInfos.any { it.state.isFinished }) {
+                refreshCameraList()
+            }
+        }
+
+        SpeedCamTheme {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                AppShell(
+                    state =
+                        ShellState(
+                            ui = DetectionState.state.collectAsStateWithLifecycle().value,
+                            cameras = cameras.collectAsStateWithLifecycle().value,
+                            blocked = blocked.collectAsStateWithLifecycle().value,
+                            profiles = profiles,
+                            hudPermissionGranted = HudOverlay.canDrawOverlays(this),
+                            isUpdating = isUpdating,
+                            pendingReportCount = pendingReportCount,
+                            isSyncingReports = isSyncingReports,
+                        ),
+                    actions = buildShellActions(),
+                )
             }
         }
     }
+
+    private fun toggleAutoUpdate(enabled: Boolean) {
+        profiles.autoUpdateEnabled = enabled
+        if (enabled) {
+            DatabaseSyncWorker.schedulePeriodic(this)
+        } else {
+            DatabaseSyncWorker.cancelPeriodic(this)
+        }
+    }
+
+    private fun buildShellActions(): ShellActions =
+        ShellActions(
+            onEnableChange = ::setDetectionEnabled,
+            onUnblock = ::unblock,
+            onRequestHudPermission = ::requestOverlayPermission,
+            onResetHudPosition = { hudPositions.clear() },
+            onAutoUpdateChange = ::toggleAutoUpdate,
+            onCheckForUpdates = { DatabaseSyncWorker.triggerImmediate(this) },
+            onReportCamera = ::reportCamera,
+            onSyncHazardOutbox = ::syncHazardOutbox,
+            onClearSyncedReports = ::clearSyncedHazards,
+            onToggleMute = ::muteNearest,
+            onBlockNearest = ::blockNearest,
+            onReportHazard = ::reportHazardFromHud,
+            onToggleHud = {
+                profiles.hudEnabled = !profiles.hudEnabled
+                syncHud()
+            },
+        )
 
     override fun onResume() {
         super.onResume()
@@ -201,6 +264,7 @@ class MainActivity : ComponentActivity() {
                     positionStore = hudPositions,
                     onBlockNearest = ::blockNearest,
                     onMuteNearest = ::muteNearest,
+                    onReportHazard = ::reportHazardFromHud,
                 ).also { it.show() }
         } else if (!wanted) {
             hudOverlay?.hide()
@@ -223,6 +287,72 @@ class MainActivity : ComponentActivity() {
     private fun muteNearest() {
         DetectionState.update { it.copy(muted = !it.muted) }
         Log.i(TAG, "HUD mute toggled.")
+    }
+
+    /** Double-tap on the HUD: reports a hazard at the active camera or current position. */
+    private fun reportHazardFromHud() {
+        val state = DetectionState.state.value
+        val nearest = state.nearest
+        val lat = nearest?.latitude ?: state.currentLat ?: return
+        val lon = nearest?.longitude ?: state.currentLon ?: return
+
+        val report =
+            HazardReportEntity(
+                lat = lat,
+                lon = lon,
+                headingDeg = state.currentBearingDeg,
+                cameraId = nearest?.cameraId,
+                reportType =
+                    if (nearest != null) {
+                        HazardReportType.FALSE_POSITIVE.ordinal
+                    } else {
+                        HazardReportType.NEW_CAMERA.ordinal
+                    },
+                speedLimitKmh = state.activeSection?.limitKmh ?: nearest?.limitKmh,
+                comment = if (nearest != null) "Reported via HUD" else "New camera via HUD",
+            )
+
+        lifecycleScope.launch {
+            val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
+            cameraStore.submitReport(report)
+            HazardReportSyncWorker.triggerImmediate(applicationContext)
+            Toast.makeText(this@MainActivity, "Hazard report queued in outbox", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun reportCamera(
+        row: CameraRow,
+        type: HazardReportType,
+        speedLimitKmh: Int?,
+        comment: String?,
+    ) {
+        val report =
+            HazardReportEntity(
+                lat = row.latitude,
+                lon = row.longitude,
+                cameraId = row.id,
+                reportType = type.ordinal,
+                speedLimitKmh = speedLimitKmh,
+                comment = comment,
+            )
+        lifecycleScope.launch {
+            val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
+            cameraStore.submitReport(report)
+            HazardReportSyncWorker.triggerImmediate(applicationContext)
+            Toast.makeText(this@MainActivity, "Report queued for camera #${row.id}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun syncHazardOutbox() {
+        HazardReportSyncWorker.triggerImmediate(this)
+    }
+
+    private fun clearSyncedHazards() {
+        lifecycleScope.launch {
+            val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
+            cameraStore.hazardReportDao.clearSynced()
+            Toast.makeText(this@MainActivity, "Cleared synced hazard reports", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun requestOverlayPermission() {
@@ -293,7 +423,7 @@ class MainActivity : ComponentActivity() {
 private enum class Tab(
     val label: String,
 ) {
-    STATUS("Status"),
+    STATUS("Dashboard"),
     CAMERAS("Cameras"),
     SETTINGS("Settings"),
 }
@@ -306,6 +436,8 @@ private data class ShellState(
     val profiles: ProfileStore,
     val hudPermissionGranted: Boolean,
     val isUpdating: Boolean = false,
+    val pendingReportCount: Int = 0,
+    val isSyncingReports: Boolean = false,
 )
 
 /** What the shell does, one callback per screen-level action. */
@@ -316,6 +448,13 @@ private data class ShellActions(
     val onResetHudPosition: () -> Unit,
     val onAutoUpdateChange: (Boolean) -> Unit,
     val onCheckForUpdates: () -> Unit,
+    val onReportCamera: (CameraRow, HazardReportType, Int?, String?) -> Unit,
+    val onSyncHazardOutbox: () -> Unit,
+    val onClearSyncedReports: () -> Unit,
+    val onToggleMute: () -> Unit,
+    val onBlockNearest: () -> Unit,
+    val onReportHazard: () -> Unit,
+    val onToggleHud: () -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -325,34 +464,104 @@ private fun AppShell(
     actions: ShellActions,
 ) {
     var tab by remember { mutableStateOf(Tab.STATUS) }
-    val profiles = state.profiles
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("SpeedCam") }) },
+        topBar = {
+            AppTopBar(
+                running = state.ui.running,
+                hudEnabled = state.profiles.hudEnabled,
+                onToggleHud = actions.onToggleHud,
+            )
+        },
         bottomBar = {
-            NavigationBar {
-                Tab.entries.forEach { entry ->
-                    NavigationBarItem(
-                        selected = tab == entry,
-                        onClick = { tab = entry },
-                        icon = { Text(entry.label.take(1)) },
-                        label = { Text(entry.label) },
-                    )
-                }
-            }
+            AppBottomBar(
+                selectedTab = tab,
+                onSelectTab = { tab = it },
+            )
         },
     ) { padding ->
         when (tab) {
-            Tab.STATUS -> StatusTab(state.ui, Modifier.padding(padding))
+            Tab.STATUS -> StatusTab(state.ui, actions, Modifier.padding(padding))
             Tab.CAMERAS ->
                 CameraListScreen(
                     cameras = state.cameras,
                     blocked = state.blocked.map { it.lat to it.lon },
                     onUnblock = actions.onUnblock,
                     modifier = Modifier.padding(padding),
+                    onReportCamera = actions.onReportCamera,
                 )
 
             Tab.SETTINGS -> SettingsTab(state, actions, Modifier.padding(padding))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AppTopBar(
+    running: Boolean,
+    hudEnabled: Boolean,
+    onToggleHud: () -> Unit,
+) {
+    TopAppBar(
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(if (running) SpeedSafe else Color(0xFF64748B)),
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "SpeedCam Radar",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        },
+        actions = {
+            IconButton(onClick = onToggleHud) {
+                val tint =
+                    if (hudEnabled) {
+                        BrandPrimaryDark
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                Icon(
+                    imageVector = Icons.Default.Layers,
+                    contentDescription = "Floating HUD",
+                    tint = tint,
+                )
+            }
+        },
+    )
+}
+
+@Composable
+private fun AppBottomBar(
+    selectedTab: Tab,
+    onSelectTab: (Tab) -> Unit,
+) {
+    NavigationBar {
+        Tab.entries.forEach { entry ->
+            NavigationBarItem(
+                selected = selectedTab == entry,
+                onClick = { onSelectTab(entry) },
+                icon = {
+                    Icon(
+                        imageVector =
+                            when (entry) {
+                                Tab.STATUS -> Icons.Default.Speed
+                                Tab.CAMERAS -> Icons.Default.PhotoCamera
+                                Tab.SETTINGS -> Icons.Default.Settings
+                            },
+                        contentDescription = entry.label,
+                    )
+                },
+                label = { Text(entry.label) },
+            )
         }
     }
 }
@@ -382,6 +591,10 @@ private fun SettingsTab(
                 lastUpdateCheckAt = profiles.lastUpdateCheckAt,
                 lastUpdateStatus = profiles.lastUpdateStatus,
                 isUpdating = state.isUpdating,
+                pendingReportCount = state.pendingReportCount,
+                lastHazardSyncAt = profiles.lastHazardSyncAt,
+                lastHazardSyncStatus = profiles.lastHazardSyncStatus,
+                isSyncingReports = state.isSyncingReports,
             ),
         actions =
             SettingsActions(
@@ -395,6 +608,8 @@ private fun SettingsTab(
                 onSilentDuringCallChange = { profiles.silentDuringCall = it },
                 onAutoUpdateChange = actions.onAutoUpdateChange,
                 onCheckForUpdates = actions.onCheckForUpdates,
+                onSyncHazardOutbox = actions.onSyncHazardOutbox,
+                onClearSyncedReports = actions.onClearSyncedReports,
             ),
         modifier = modifier,
     )
@@ -406,74 +621,59 @@ private const val DATA_SOURCE_NOTE = "OpenStreetMap, ODbL 1.0. Rebuilt by tools/
 @Composable
 private fun StatusTab(
     state: com.speedcam.service.DetectionUiState,
+    actions: ShellActions,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    LazyColumn(
+        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("SpeedCam", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            text = if (state.running) "Detecting" else "Stopped",
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            text = "${state.speedKmh.toInt()} km/h · ${if (state.hasFix) "GPS ok" else "no fix"}",
-            style = MaterialTheme.typography.bodyLarge,
-        )
-
-        val nearest = state.nearest
-        if (nearest == null) {
-            Text("No cameras in range", style = MaterialTheme.typography.bodyMedium)
-        } else {
-            Text(
-                text =
-                    "Nearest: ${nearest.distanceM.toInt()} m" +
-                        (nearest.limitKmh?.let { ", limit $it km/h" } ?: ", limit unknown"),
-                style = MaterialTheme.typography.bodyLarge,
-                color =
-                    if (state.overLimit) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-            )
-            Text(
-                text = if (nearest.behind) "Oncoming" else "Ahead",
-                style = MaterialTheme.typography.bodySmall,
+        // Hero Speedometer & Radar Cluster
+        item {
+            SpeedometerCluster(
+                state = state,
+                actions =
+                    SpeedometerActions(
+                        onEnableChange = actions.onEnableChange,
+                        onToggleMute = actions.onToggleMute,
+                        onReportHazard = actions.onReportHazard,
+                        onToggleHud = actions.onToggleHud,
+                    ),
             )
         }
 
-        SectionStatusRow(state.activeSection)
+        // Active Average Speed Zone (SPECS Corridor)
+        state.activeSection?.let { section ->
+            item {
+                SpecsSectionAlertCard(section = section)
+            }
+        }
 
-        Text(
-            text =
-                "Profile: ${state.profileName}" +
-                    if (state.headsetConnected) {
-                        " · Bluetooth audio"
-                    } else {
-                        "" +
-                            if (state.muted) " · muted" else ""
-                    },
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Start,
-        )
+        // Primary Upcoming Hazard
+        val nearest = state.nearest
+        if (nearest != null) {
+            item {
+                PrimaryHazardAlertCard(
+                    hazard = nearest,
+                    overLimit = state.overLimit,
+                    onMute = actions.onToggleMute,
+                    onBlock = actions.onBlockNearest,
+                )
+            }
+        }
+
+        // Secondary Upcoming Hazard
+        state.second?.let { second ->
+            item {
+                SecondaryHazardCard(hazard = second)
+            }
+        }
+
+        // Clear Road State
+        if (nearest == null && state.activeSection == null) {
+            item {
+                EmptyHazardCard(radarActive = state.running)
+            }
+        }
     }
-}
-
-@Composable
-private fun SectionStatusRow(section: com.speedcam.service.SectionUiState?) {
-    if (section == null) return
-    Text(
-        text =
-            "Average-speed zone: ~${section.averageKmh.toInt()} km/h " +
-                "(limit ${section.limitKmh} km/h, ${section.remainingM.toInt()} m left)",
-        style = MaterialTheme.typography.bodyLarge,
-        color =
-            if (section.overLimit) {
-                MaterialTheme.colorScheme.error
-            } else {
-                MaterialTheme.colorScheme.onSurface
-            },
-    )
 }

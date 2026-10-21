@@ -89,6 +89,21 @@ class ProfileStore(
         get() = prefs.getString(KEY_UPDATE_URL, "") ?: ""
         set(value) = prefs.edit().putString(KEY_UPDATE_URL, value).apply()
 
+    /** Remote endpoint for crowdsourced hazard submissions. Empty means default service. */
+    var hazardReportUrl: String
+        get() = prefs.getString(KEY_HAZARD_REPORT_URL, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_HAZARD_REPORT_URL, value).apply()
+
+    /** ISO timestamp when the hazard outbox was last synchronized. */
+    var lastHazardSyncAt: String?
+        get() = prefs.getString(KEY_LAST_HAZARD_SYNC_AT, null)
+        set(value) = prefs.edit().putString(KEY_LAST_HAZARD_SYNC_AT, value).apply()
+
+    /** Status or message from the last hazard outbox sync attempt. */
+    var lastHazardSyncStatus: String?
+        get() = prefs.getString(KEY_LAST_HAZARD_SYNC_STATUS, null)
+        set(value) = prefs.edit().putString(KEY_LAST_HAZARD_SYNC_STATUS, value).apply()
+
     /**
      * The profile detection runs under right now.
      *
@@ -122,5 +137,8 @@ class ProfileStore(
         const val KEY_LAST_UPDATE_CHECK_AT = "lastUpdateCheckAt"
         const val KEY_LAST_UPDATE_STATUS = "lastUpdateStatus"
         const val KEY_UPDATE_URL = "updateUrl"
+        const val KEY_HAZARD_REPORT_URL = "hazardReportUrl"
+        const val KEY_LAST_HAZARD_SYNC_AT = "lastHazardSyncAt"
+        const val KEY_LAST_HAZARD_SYNC_STATUS = "lastHazardSyncStatus"
     }
 }

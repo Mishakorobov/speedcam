@@ -42,6 +42,9 @@ data class DetectionUiState(
     val running: Boolean = false,
     val hasFix: Boolean = false,
     val speedKmh: Double = 0.0,
+    val currentLat: Double? = null,
+    val currentLon: Double? = null,
+    val currentBearingDeg: Double? = null,
     /** Nearest camera in range, or null when there is none. */
     val nearest: HazardView? = null,
     /** The two nearest, for the two-slot layout the original uses. */

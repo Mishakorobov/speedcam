@@ -120,10 +120,12 @@ class DatabaseSyncEngine(
             )
         }
 
-        // 1. Snapshot current user overrides before modifying database files
+        // 1. Snapshot current user overrides and hazard reports before modifying database files
         val existingStore = SpeedCamApp.cameraStore(context)
         val preservedOverrides =
             runCatching { existingStore.overrideDao.all() }.getOrDefault(emptyList())
+        val preservedReports =
+            runCatching { existingStore.hazardReportDao.allReports() }.getOrDefault(emptyList())
 
         // 2. Release open Room handles so file descriptors are freed
         SpeedCamApp.closeCameraStore(context)
@@ -147,6 +149,9 @@ class DatabaseSyncEngine(
 
             if (preservedOverrides.isNotEmpty()) {
                 newStore.overrideDao.upsertAll(preservedOverrides)
+            }
+            if (preservedReports.isNotEmpty()) {
+                newStore.hazardReportDao.upsertAll(preservedReports)
             }
             newStore.refreshOverrides()
             newStore.refreshSections()

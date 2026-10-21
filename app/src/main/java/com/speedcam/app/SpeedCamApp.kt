@@ -3,6 +3,7 @@ package com.speedcam.app
 import android.app.Application
 import android.content.Context
 import com.speedcam.app.sync.DatabaseSyncWorker
+import com.speedcam.app.sync.HazardReportSyncWorker
 import com.speedcam.core.data.CameraStore
 import com.speedcam.service.ProfileStore
 
@@ -44,6 +45,7 @@ class SpeedCamApp : Application() {
         if (ProfileStore(this).autoUpdateEnabled) {
             DatabaseSyncWorker.schedulePeriodic(this)
         }
+        HazardReportSyncWorker.schedulePeriodic(this)
     }
 
     override fun onTerminate() {

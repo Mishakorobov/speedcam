@@ -111,3 +111,85 @@ data class OverrideEntity(
     @ColumnInfo(name = "created")
     val created: String,
 )
+
+/** Types of crowdsourced hazard reports a driver can submit. */
+enum class HazardReportType {
+    /** A camera exists on the road but is missing in the database. */
+    NEW_CAMERA,
+
+    /** A camera listed in the database does not exist on the ground. */
+    REMOVED_CAMERA,
+
+    /** The speed limit recorded in the database is incorrect. */
+    WRONG_SPEED_LIMIT,
+
+    /** False alarm / warning in the wrong direction or inapplicable. */
+    FALSE_POSITIVE,
+    ;
+
+    companion object {
+        fun fromOrdinal(ordinal: Int): HazardReportType = entries.getOrElse(ordinal) { NEW_CAMERA }
+    }
+}
+
+/** Synchronization state of a locally filed hazard report. */
+enum class ReportSyncStatus {
+    /** Report is stored in local outbox, waiting to be uploaded. */
+    PENDING,
+
+    /** Successfully delivered to remote backend. */
+    SYNCED,
+
+    /** Upload attempt failed; will be retried by worker with backoff. */
+    FAILED,
+    ;
+
+    companion object {
+        fun fromOrdinal(ordinal: Int): ReportSyncStatus = entries.getOrElse(ordinal) { PENDING }
+    }
+}
+
+/**
+ * An offline outbox record for user-submitted camera corrections (AREAS_FOR_DEVELOPMENT.md [M-30]).
+ *
+ * Stored locally so that submissions in rural or dead-zone areas are never lost.
+ */
+@Entity(
+    tableName = "hazard_report",
+    indices = [
+        Index(value = ["status", "created_at"]),
+        Index(value = ["lat", "lon"]),
+    ],
+)
+data class HazardReportEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0L,
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(name = "lat")
+    val lat: Double,
+    @ColumnInfo(name = "lon")
+    val lon: Double,
+    @ColumnInfo(name = "heading_deg")
+    val headingDeg: Double? = null,
+    /** Id of the existing camera being corrected, or null if reporting a new camera. */
+    @ColumnInfo(name = "camera_id")
+    val cameraId: Long? = null,
+    /** [HazardReportType] ordinal. */
+    @ColumnInfo(name = "report_type")
+    val reportType: Int,
+    /** Proposed or actual speed limit in km/h. */
+    @ColumnInfo(name = "speed_limit_kmh")
+    val speedLimitKmh: Int? = null,
+    @ColumnInfo(name = "comment")
+    val comment: String? = null,
+    /** [ReportSyncStatus] ordinal. */
+    @ColumnInfo(name = "status")
+    val status: Int = ReportSyncStatus.PENDING.ordinal,
+    @ColumnInfo(name = "attempts")
+    val attempts: Int = 0,
+    @ColumnInfo(name = "last_attempt_at")
+    val lastAttemptAt: Long? = null,
+    @ColumnInfo(name = "remote_id")
+    val remoteId: String? = null,
+)

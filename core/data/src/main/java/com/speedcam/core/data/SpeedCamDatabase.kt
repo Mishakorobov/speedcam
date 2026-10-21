@@ -6,6 +6,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -13,8 +15,9 @@ import androidx.room.TypeConverters
         SectionEntity::class,
         OverrideEntity::class,
         MetaRow::class,
+        HazardReportEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(MetaConverters::class)
@@ -27,8 +30,43 @@ abstract class SpeedCamDatabase : RoomDatabase() {
 
     abstract fun metaDao(): MetaDao
 
+    abstract fun hazardReportDao(): HazardReportDao
+
     companion object {
         const val NAME = "speedcam.db"
+
+        val MIGRATION_1_2 =
+            object : Migration(1, 2) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS `hazard_report` (
+                            `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            `created_at` INTEGER NOT NULL,
+                            `lat` REAL NOT NULL,
+                            `lon` REAL NOT NULL,
+                            `heading_deg` REAL,
+                            `camera_id` INTEGER,
+                            `report_type` INTEGER NOT NULL,
+                            `speed_limit_kmh` INTEGER,
+                            `comment` TEXT,
+                            `status` INTEGER NOT NULL,
+                            `attempts` INTEGER NOT NULL,
+                            `last_attempt_at` INTEGER,
+                            `remote_id` TEXT
+                        )
+                        """.trimIndent(),
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_hazard_report_status_created_at` " +
+                            "ON `hazard_report` (`status`, `created_at`)",
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_hazard_report_lat_lon` " +
+                            "ON `hazard_report` (`lat`, `lon`)",
+                    )
+                }
+            }
 
         /**
          * Opens the database, installing the bundled copy first if there is not one yet.
@@ -45,8 +83,7 @@ abstract class SpeedCamDatabase : RoomDatabase() {
 
             return Room
                 .databaseBuilder(app, SpeedCamDatabase::class.java, NAME)
-                // No fallbackToDestructiveMigration: a camera database lost to a bad migration
-                // is a silent safety regression. Migrations must be written explicitly.
+                .addMigrations(MIGRATION_1_2)
                 .build()
         }
     }

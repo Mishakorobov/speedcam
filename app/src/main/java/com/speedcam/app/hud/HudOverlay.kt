@@ -38,6 +38,7 @@ class HudOverlay(
     private val positionStore: HudPositionStore,
     private val onBlockNearest: (() -> Unit)? = null,
     private val onMuteNearest: (() -> Unit)? = null,
+    private val onReportHazard: (() -> Unit)? = null,
 ) {
     private val lifecycleOwner = HudLifecycleOwner()
 
@@ -146,6 +147,7 @@ class HudOverlay(
                             onCommitDrag = ::persistPosition,
                             onBlock = { onBlockNearest?.invoke() },
                             onMute = { onMuteNearest?.invoke() },
+                            onReport = { onReportHazard?.invoke() },
                         )
                     }
                 }
