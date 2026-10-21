@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
@@ -62,9 +63,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.speedcam.app.cameras.CameraListActions
 import com.speedcam.app.cameras.CameraRow
 import com.speedcam.app.hud.HudOverlay
 import com.speedcam.app.hud.HudOverlayManager
+import com.speedcam.app.map.MapFollowMode
+import com.speedcam.app.map.MapThemeMode
+import com.speedcam.app.map.RadarMapCard
+import com.speedcam.app.map.VectorMapActions
+import com.speedcam.app.map.VectorMapData
+import com.speedcam.app.map.VectorMapScreen
+import com.speedcam.app.map.VectorMapState
 import com.speedcam.app.pip.PipHelper
 import com.speedcam.app.pip.PipSpeedometerContent
 import com.speedcam.app.sync.DatabaseSyncWorker
@@ -83,6 +92,7 @@ import com.speedcam.core.data.HazardReportEntity
 import com.speedcam.core.data.HazardReportType
 import com.speedcam.core.data.contracam.ContraCamArchiveSync
 import com.speedcam.core.detect.Camera
+import com.speedcam.core.detect.SectionRecord
 import com.speedcam.core.geo.LatLon
 import com.speedcam.service.CarBluetoothManager
 import com.speedcam.service.DetectionState
@@ -108,6 +118,7 @@ class MainActivity : ComponentActivity() {
 
     private val cameras = MutableStateFlow<List<Camera>>(emptyList())
     private val blocked = MutableStateFlow<List<LatLon>>(emptyList())
+    private val sections = MutableStateFlow<List<SectionRecord>>(emptyList())
 
     private var isContraCamSyncing by mutableStateOf(false)
     private var useContraCamDb by mutableStateOf(false)
@@ -278,6 +289,7 @@ class MainActivity : ComponentActivity() {
                     ui = detectionState,
                     cameras = cameras.collectAsStateWithLifecycle().value,
                     blocked = blocked.collectAsStateWithLifecycle().value,
+                    sections = sections.collectAsStateWithLifecycle().value,
                     profiles = profiles,
                     hudPermissionGranted = HudOverlay.canDrawOverlays(this),
                     isUpdating = isUpdating,
@@ -445,6 +457,7 @@ class MainActivity : ComponentActivity() {
                 cameraStore.refreshSections()
                 cameras.value = cameraStore.allCameras()
                 blocked.value = cameraStore.overrides.blocked
+                sections.value = cameraStore.sections
             }.onFailure { Log.w(TAG, "Could not load the camera list: ${it.message}") }
         }
     }
@@ -572,6 +585,7 @@ private enum class Tab(
     val label: String,
 ) {
     STATUS("Dashboard"),
+    MAP("Map"),
     CAMERAS("Cameras"),
     SETTINGS("Settings"),
 }
@@ -581,6 +595,7 @@ private data class ShellState(
     val ui: com.speedcam.service.DetectionUiState,
     val cameras: List<Camera>,
     val blocked: List<LatLon>,
+    val sections: List<SectionRecord> = emptyList(),
     val profiles: ProfileStore,
     val hudPermissionGranted: Boolean,
     val isUpdating: Boolean = false,
@@ -626,6 +641,7 @@ private data class ShellActions(
     val onPipAutoEnterChange: (Boolean) -> Unit,
     val onLauncherBroadcastEnabledChange: (Boolean) -> Unit,
     val onHeadUnitAutoStartChange: (Boolean) -> Unit,
+    val onNavigateToTab: (Tab) -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -635,6 +651,20 @@ private fun AppShell(
     actions: ShellActions,
 ) {
     var tab by remember { mutableStateOf(Tab.STATUS) }
+    val mapState =
+        remember {
+            VectorMapState(
+                initialCenter =
+                    LatLon(
+                        state.ui.currentLat ?: 55.7558,
+                        state.ui.currentLon ?: 37.6173,
+                    ),
+                initialZoom = 15.5f,
+                initialBearing = (state.ui.currentBearingDeg ?: 0.0).toFloat(),
+                initialFollowMode = MapFollowMode.FOLLOW_HEADING,
+                initialTheme = MapThemeMode.AUTOMOTIVE_DARK,
+            )
+        }
 
     Scaffold(
         topBar = {
@@ -653,21 +683,98 @@ private fun AppShell(
             )
         },
     ) { padding ->
-        when (tab) {
-            Tab.STATUS -> StatusTab(state.ui, actions, Modifier.padding(padding))
-            Tab.CAMERAS ->
-                CameraListScreen(
-                    cameras = state.cameras,
-                    blocked = state.blocked.map { it.lat to it.lon },
-                    onUnblock = actions.onUnblock,
-                    modifier = Modifier.padding(padding),
-                    onReportCamera = actions.onReportCamera,
-                )
-
-            Tab.SETTINGS -> SettingsTab(state, actions, Modifier.padding(padding))
-        }
+        val shellActions =
+            remember(actions) {
+                actions.copy(onNavigateToTab = { tab = it })
+            }
+        ShellTabContent(
+            tab = tab,
+            state = state,
+            mapState = mapState,
+            actions = shellActions,
+            modifier = Modifier.padding(padding),
+        )
     }
 }
+
+@Composable
+private fun ShellTabContent(
+    tab: Tab,
+    state: ShellState,
+    mapState: VectorMapState,
+    actions: ShellActions,
+    modifier: Modifier = Modifier,
+) {
+    when (tab) {
+        Tab.STATUS ->
+            StatusTab(
+                state = state,
+                actions = actions,
+                onOpenMap = { actions.onNavigateToTab(Tab.MAP) },
+                modifier = modifier,
+            )
+
+        Tab.MAP ->
+            VectorMapScreen(
+                mapState = mapState,
+                detectionState = state.ui,
+                mapData =
+                    VectorMapData(
+                        cameras = state.cameras,
+                        sections = state.sections,
+                        roads = emptyList(),
+                    ),
+                actions =
+                    VectorMapActions(
+                        onBlockCamera = { cam -> actions.onUnblock(cam.toCameraRow()) },
+                        onReportCamera = { cam ->
+                            actions.onReportCamera(
+                                cam.toCameraRow(),
+                                HazardReportType.FALSE_POSITIVE,
+                                cam.limitKmh,
+                                "Reported from Vector Map",
+                            )
+                        },
+                    ),
+                modifier = modifier,
+            )
+
+        Tab.CAMERAS ->
+            CameraListScreen(
+                cameras = state.cameras,
+                blocked = state.blocked.map { it.lat to it.lon },
+                actions =
+                    CameraListActions(
+                        onUnblock = actions.onUnblock,
+                        onReportCamera = actions.onReportCamera,
+                        onViewOnMap = { row ->
+                            mapState.centerOn(
+                                target = LatLon(row.latitude, row.longitude),
+                                targetZoom = 16.5f,
+                                mode = MapFollowMode.FREE_ROAM,
+                            )
+                            mapState.inspectCamera(state.cameras.find { it.id == row.id })
+                            actions.onNavigateToTab(Tab.MAP)
+                        },
+                    ),
+                modifier = modifier,
+            )
+
+        Tab.SETTINGS -> SettingsTab(state, actions, modifier)
+    }
+}
+
+private fun Camera.toCameraRow(): CameraRow =
+    CameraRow(
+        id = id,
+        latitude = position.lat,
+        longitude = position.lon,
+        limitKmh = limitKmh,
+        kind = kind,
+        source = source,
+        operator = operator,
+        blocked = false,
+    )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -738,6 +845,7 @@ private fun AppBottomBar(
                         imageVector =
                             when (entry) {
                                 Tab.STATUS -> Icons.Default.Speed
+                                Tab.MAP -> Icons.Default.Map
                                 Tab.CAMERAS -> Icons.Default.PhotoCamera
                                 Tab.SETTINGS -> Icons.Default.Settings
                             },
@@ -846,8 +954,9 @@ private const val DATA_SOURCE_NOTE = "OpenStreetMap, ODbL 1.0. Rebuilt by tools/
 
 @Composable
 private fun StatusTab(
-    state: com.speedcam.service.DetectionUiState,
+    state: ShellState,
     actions: ShellActions,
+    onOpenMap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -857,7 +966,7 @@ private fun StatusTab(
         // Hero Speedometer & Radar Cluster
         item {
             SpeedometerCluster(
-                state = state,
+                state = state.ui,
                 actions =
                     SpeedometerActions(
                         onEnableChange = actions.onEnableChange,
@@ -868,20 +977,30 @@ private fun StatusTab(
             )
         }
 
+        // Lightweight Vector Radar Map Preview Card
+        item {
+            RadarMapCard(
+                detectionState = state.ui,
+                cameras = state.cameras,
+                sections = state.sections,
+                onExpandMap = onOpenMap,
+            )
+        }
+
         // Active Average Speed Zone (SPECS Corridor)
-        state.activeSection?.let { section ->
+        state.ui.activeSection?.let { section ->
             item {
                 SpecsSectionAlertCard(section = section)
             }
         }
 
         // Primary Upcoming Hazard
-        val nearest = state.nearest
+        val nearest = state.ui.nearest
         if (nearest != null) {
             item {
                 PrimaryHazardAlertCard(
                     hazard = nearest,
-                    overLimit = state.overLimit,
+                    overLimit = state.ui.overLimit,
                     onMute = actions.onToggleMute,
                     onBlock = actions.onBlockNearest,
                 )
@@ -889,16 +1008,16 @@ private fun StatusTab(
         }
 
         // Secondary Upcoming Hazard
-        state.second?.let { second ->
+        state.ui.second?.let { second ->
             item {
                 SecondaryHazardCard(hazard = second)
             }
         }
 
         // Clear Road State
-        if (nearest == null && state.activeSection == null) {
+        if (nearest == null && state.ui.activeSection == null) {
             item {
-                EmptyHazardCard(radarActive = state.running)
+                EmptyHazardCard(radarActive = state.ui.running)
             }
         }
     }

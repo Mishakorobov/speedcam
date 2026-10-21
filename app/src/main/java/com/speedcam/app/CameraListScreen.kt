@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material3.AlertDialog
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.speedcam.app.cameras.CameraFilter
 import com.speedcam.app.cameras.CameraFilterEngine
+import com.speedcam.app.cameras.CameraListActions
 import com.speedcam.app.cameras.CameraRegion
 import com.speedcam.app.cameras.CameraRow
 import com.speedcam.app.ui.components.CompactSpeedLimitBadge
@@ -69,9 +71,8 @@ import com.speedcam.core.detect.CameraKind
 fun CameraListScreen(
     cameras: List<com.speedcam.core.detect.Camera>,
     blocked: List<Pair<Double, Double>>,
-    onUnblock: (CameraRow) -> Unit,
+    actions: CameraListActions,
     modifier: Modifier = Modifier,
-    onReportCamera: ((CameraRow, HazardReportType, Int?, String?) -> Unit)? = null,
 ) {
     var filter by remember { mutableStateOf(CameraFilter()) }
     var reportingCamera by remember { mutableStateOf<CameraRow?>(null) }
@@ -107,11 +108,12 @@ fun CameraListScreen(
                 rows = rows,
                 onRowClick = { row ->
                     if (row.blocked) {
-                        onUnblock(row)
-                    } else if (onReportCamera != null) {
+                        actions.onUnblock(row)
+                    } else if (actions.onReportCamera != null) {
                         reportingCamera = row
                     }
                 },
+                onViewOnMap = actions.onViewOnMap,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -123,7 +125,7 @@ fun CameraListScreen(
             onDismiss = { reportingCamera = null },
             onSubmit = { type, limit, comment ->
                 reportingCamera = null
-                onReportCamera?.invoke(camera, type, limit, comment)
+                actions.onReportCamera?.invoke(camera, type, limit, comment)
             },
         )
     }
@@ -258,6 +260,7 @@ private fun CameraListItems(
     rows: List<CameraRow>,
     onRowClick: (CameraRow) -> Unit,
     modifier: Modifier = Modifier,
+    onViewOnMap: ((CameraRow) -> Unit)? = null,
 ) {
     LazyColumn(
         modifier =
@@ -270,6 +273,7 @@ private fun CameraListItems(
             CameraCardItem(
                 row = row,
                 onClick = { onRowClick(row) },
+                onViewOnMap = onViewOnMap?.let { { it(row) } },
             )
         }
         item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -280,6 +284,7 @@ private fun CameraListItems(
 private fun CameraCardItem(
     row: CameraRow,
     onClick: () -> Unit,
+    onViewOnMap: (() -> Unit)? = null,
 ) {
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -309,7 +314,11 @@ private fun CameraCardItem(
         ) {
             CameraCardIcon(kind = row.kind, blocked = row.blocked)
             CameraCardInfo(row = row, modifier = Modifier.weight(1f))
-            CameraCardTrailing(limitKmh = row.limitKmh, blocked = row.blocked)
+            CameraCardTrailing(
+                limitKmh = row.limitKmh,
+                blocked = row.blocked,
+                onViewOnMap = onViewOnMap,
+            )
         }
     }
 }
@@ -411,25 +420,45 @@ private fun CameraCardInfo(
 private fun CameraCardTrailing(
     limitKmh: Int?,
     blocked: Boolean,
+    onViewOnMap: (() -> Unit)? = null,
 ) {
-    Column(
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        CompactSpeedLimitBadge(limitKmh = limitKmh)
-
-        if (blocked) {
-            Surface(
-                shape = RoundedCornerShape(6.dp),
-                color = SpeedDanger,
+        onViewOnMap?.let { onMap ->
+            IconButton(
+                onClick = onMap,
+                modifier = Modifier.size(34.dp),
             ) {
-                Text(
-                    text = "BLOCKED",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                Icon(
+                    imageVector = Icons.Default.Map,
+                    contentDescription = "View on map",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
                 )
+            }
+        }
+
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            CompactSpeedLimitBadge(limitKmh = limitKmh)
+
+            if (blocked) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = SpeedDanger,
+                ) {
+                    Text(
+                        text = "BLOCKED",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
             }
         }
     }
