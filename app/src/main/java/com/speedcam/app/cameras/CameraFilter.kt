@@ -27,6 +27,8 @@ data class CameraFilter(
     val minLimitKmh: Int? = null,
     /** Inclusive upper bound on the limit, in km/h. */
     val maxLimitKmh: Int? = null,
+    /** Optional region boundary filter. */
+    val region: CameraRegion? = null,
     /** Exclude cameras the driver has blocked. */
     val excludeBlocked: Boolean = false,
     /** Only cameras with no recorded limit. Mutually exclusive with [requireLimit]. */
@@ -35,6 +37,7 @@ data class CameraFilter(
     val isActive: Boolean
         get() =
             query.isNotBlank() ||
+                (region != null && region != CameraRegion.ALL) ||
                 kinds.isNotEmpty() ||
                 sources.isNotEmpty() ||
                 requireLimit ||
@@ -81,6 +84,7 @@ object CameraFilterEngine {
 
         return cameras
             .asSequence()
+            .filter { filter.region == null || filter.region.contains(it.position) }
             .filter { matchesLimits(it, filter) }
             .filter { matchesText(it, needle) }
             .map { camera ->

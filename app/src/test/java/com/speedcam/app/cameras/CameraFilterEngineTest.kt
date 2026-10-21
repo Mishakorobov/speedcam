@@ -189,5 +189,24 @@ class CameraFilterEngineTest {
         assertTrue(CameraFilter(kinds = setOf(CameraKind.MOBILE)).isActive)
         assertTrue(CameraFilter(minLimitKmh = 10).isActive)
         assertTrue(CameraFilter(excludeBlocked = true).isActive)
+        assertTrue(CameraFilter(region = CameraRegion.MOSCOW).isActive)
+        assertFalse(CameraFilter(region = CameraRegion.ALL).isActive)
+    }
+
+    @Test
+    fun `region filter narrows cameras by geographic boundary`() {
+        val mskCam = camera(10, lat = 55.75, lon = 37.61)
+        val spbCam = camera(20, lat = 59.93, lon = 30.33)
+        val krdCam = camera(30, lat = 45.03, lon = 38.97)
+        val list = listOf(mskCam, spbCam, krdCam)
+
+        val mskFiltered = CameraFilterEngine.apply(list, CameraFilter(region = CameraRegion.MOSCOW))
+        assertEquals(listOf(10L), mskFiltered.map { it.id })
+
+        val spbFiltered = CameraFilterEngine.apply(list, CameraFilter(region = CameraRegion.SPB))
+        assertEquals(listOf(20L), spbFiltered.map { it.id })
+
+        val allFiltered = CameraFilterEngine.apply(list, CameraFilter(region = CameraRegion.ALL))
+        assertEquals(3, allFiltered.size)
     }
 }

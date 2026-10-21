@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.speedcam.core.detect.AlertProfile
 import com.speedcam.core.detect.QuickSetting
 import com.speedcam.core.detect.TransportProfile
+import com.speedcam.core.media.OutputMode
 
 /**
  * Persists what the driver has chosen about detection.
@@ -63,6 +64,15 @@ class ProfileStore(
     var knownCameraCount: Int
         get() = prefs.getInt(KEY_CAMERA_COUNT, 0)
         set(value) = prefs.edit().putInt(KEY_CAMERA_COUNT, value).apply()
+
+    /** Audio output routing mode (standard media, speaker, BT multimedia, BT HFP). */
+    var outputMode: OutputMode
+        get() =
+            OutputMode.entries
+                .getOrElse(prefs.getInt(KEY_OUTPUT_MODE, OutputMode.STANDARD.ordinal)) {
+                    OutputMode.STANDARD
+                }
+        set(value) = prefs.edit().putInt(KEY_OUTPUT_MODE, value.ordinal).apply()
 
     /** The "Silent during phone call" setting. Defaults to false, as in the original. */
     var silentDuringCall: Boolean
@@ -132,6 +142,7 @@ class ProfileStore(
         const val KEY_CAPTURE_DISTANCE_KM = "captureDistanceKm"
         const val KEY_SILENT_DURING_CALL = "silentDuringCall"
         const val KEY_CAMERA_COUNT = "cameraCount"
+        const val KEY_OUTPUT_MODE = "outputMode"
         const val KEY_HUD_ENABLED = "hudEnabled"
         const val KEY_AUTO_UPDATE_ENABLED = "autoUpdateEnabled"
         const val KEY_LAST_UPDATE_CHECK_AT = "lastUpdateCheckAt"

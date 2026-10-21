@@ -126,12 +126,17 @@ class DetectionService : Service() {
      * profile: the service is the only component entitled to know about audio routing, so the
      * headset presence is resolved here rather than guessed at in the media layer.
      */
-    private fun currentOutputMode(): OutputMode =
-        if (hasConnectedAudioDevice(this)) {
+    private fun currentOutputMode(): OutputMode {
+        val configured = profiles.outputMode
+        if (configured != OutputMode.STANDARD) {
+            return configured
+        }
+        return if (hasConnectedAudioDevice(this)) {
             OutputMode.BLUETOOTH_MULTIMEDIA
         } else {
             OutputMode.STANDARD
         }
+    }
 
     private fun micInUse(manager: android.media.AudioManager): Boolean =
         runCatching { manager.activeRecordingConfigurations.isNotEmpty() }.getOrDefault(false)

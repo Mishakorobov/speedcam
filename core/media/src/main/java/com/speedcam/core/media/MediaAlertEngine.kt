@@ -35,6 +35,7 @@ class MediaAlertEngine(
     private val gager = GagerPlayer()
     private val bank = SoundBank()
     private val vibration = VibrationEngine(applicationContext)
+    private val scoController = BluetoothScoController(applicationContext, audioManager)
 
     private var focusRequest: AudioFocusRequest? = null
     private var cadence: AlertCadenceState = AlertCadence.initial()
@@ -95,12 +96,12 @@ class MediaAlertEngine(
         isPrimary: Boolean,
         nowMillis: Long,
     ) {
-        // The original drops the whole alert — sound, speech and vibration alike — when the
-        // phone is busy. Reproduced rather than improved on.
         if (callState.suppresses()) {
             Log.d(TAG, "Call in progress; dropping the alert.")
             return
         }
+
+        prepareAudioRoute()
 
         val wantsBeep = AlertChannel.BEEP in decision.channels && mode.allowsTones
         val wantsSound = AlertChannel.SOUND in decision.channels
@@ -122,31 +123,33 @@ class MediaAlertEngine(
             )
         cadence = outcome.next
 
-        Log.i(
-            TAG,
-            "Alert at ${decision.distanceM.toInt()} m on $mode: " +
-                "requested(sound=$wantsSound beep=$wantsBeep speech=$wantsSpeech vibro=$wantsVibro) " +
-                "-> played(sound=${outcome.sound} beep=${outcome.beep} " +
-                "speech=${outcome.speech} vibro=${outcome.vibro})",
-        )
+        dispatchAlertOutputs(decision, hazard, outcome)
+        scheduleRouteRelease(gager.durationMs(decision.distanceM).toLong())
+    }
 
-        // At most one tone per alert. The bank-clip path and the beep path used to each request a
-        // tone, so a profile with both channels produced two overlapping notes - which on a
-        // rising-pitch cue reads as the approach stuttering rather than rising.
+    private fun prepareAudioRoute() {
+        if (mode.requiresBluetoothSco) {
+            scoController.acquireSco()
+        } else if (mode.forcesSpeaker) {
+            runCatching { audioManager?.isSpeakerphoneOn = true }
+        }
+    }
+
+    private fun scheduleRouteRelease(durationMs: Long) {
+        if (mode.requiresBluetoothSco) {
+            scoController.releaseSco(durationMs + BluetoothScoController.DEFAULT_SCO_TEARDOWN_DELAY_MS)
+        }
+    }
+
+    private fun dispatchAlertOutputs(
+        decision: AlertDecision,
+        hazard: Hazard,
+        outcome: CadenceOutcome,
+    ) {
         val bankPlayed = if (outcome.sound) bank.play(decision.soundId) else false
-        if (outcome.beep) {
-            // The fallback tone stands in for the beep channel, not for the bank clip.
-            //
-            // The original lets a sound id through even while its latch is closed, which is
-            // right for a clip half a second long and wrong for an 800 ms approach tone: the
-            // bank's absence is this build's limitation, not something the driver asked for,
-            // and standing in for it would turn the cue into a continuous drone from eight
-            // kilometres out. Routing the fallback through the latch is what makes the
-            // cadence mean what it says.
-            if (!bankPlayed) {
-                if (outcome.sound) Log.d(TAG, "Clip ${decision.soundId} is not in the bank; using a tone.")
-                playFallbackTone(decision)
-            }
+        if (outcome.beep && !bankPlayed) {
+            if (outcome.sound) Log.d(TAG, "Clip ${decision.soundId} is not in the bank; using a tone.")
+            playFallbackTone(decision)
         }
 
         if (outcome.speech) {
@@ -154,11 +157,6 @@ class MediaAlertEngine(
             Log.i(TAG, "Speech planned: ${plan.phrases.joinToString { it.name }}")
         }
 
-        // The haptic is part of the alert, so it fires when the alert fires and not on every tick.
-        // The original gets this for free because its native core recomputes HazardState.vibro
-        // alongside the sound and beep flags; with our cadence latch the equivalent is to
-        // let it follow the same gate. This supports silent tactile alerts (audio muted) while
-        // preventing a continuous 500 ms pulse on every 1 Hz location fix.
         if (outcome.vibro) {
             vibration.vibrate()
         }
@@ -184,6 +182,8 @@ class MediaAlertEngine(
                 else -> return
             }
 
+        prepareAudioRoute()
+
         if (profile.voice) {
             Log.i(
                 TAG,
@@ -197,6 +197,7 @@ class MediaAlertEngine(
         if (profile.vibro) {
             vibration.vibrate()
         }
+        scheduleRouteRelease(2500L)
     }
 
     /**
@@ -212,6 +213,7 @@ class MediaAlertEngine(
     }
 
     fun release() {
+        scoController.forceStop()
         gager.release()
         bank.release()
         vibration.release()

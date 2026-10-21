@@ -75,6 +75,24 @@ class MediaPolicyTest {
         assertEquals(4, OutputMode.ALARM.usageRaw)
     }
 
+    @Test
+    fun `sco teardown delay matches audio focus timing specification`() {
+        assertEquals(2_000L, AudioFocusTimings.STOP_SCO_DELAY_MS)
+        assertEquals(1_900L, AudioFocusTimings.ABANDON_FOCUS_DELAY_MS)
+        assertEquals(
+            AudioFocusTimings.STOP_SCO_DELAY_MS,
+            BluetoothScoController.DEFAULT_SCO_TEARDOWN_DELAY_MS,
+        )
+    }
+
+    @Test
+    fun `voice communication attributes are configured for Bluetooth voice modes`() {
+        assertEquals(2, OutputMode.BLUETOOTH_HFP.usageRaw)
+        assertEquals(1, OutputMode.BLUETOOTH_HFP.contentTypeRaw)
+        assertEquals(2, OutputMode.BLUETOOTH_MULTIMEDIA.usageRaw)
+        assertEquals(1, OutputMode.BLUETOOTH_MULTIMEDIA.contentTypeRaw)
+    }
+
     // --------------------------------------------------------------- call state
 
     @Test

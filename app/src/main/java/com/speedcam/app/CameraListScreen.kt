@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.speedcam.app.cameras.CameraFilter
 import com.speedcam.app.cameras.CameraFilterEngine
+import com.speedcam.app.cameras.CameraRegion
 import com.speedcam.app.cameras.CameraRow
 import com.speedcam.app.ui.components.CompactSpeedLimitBadge
 import com.speedcam.app.ui.components.getCameraIcon
@@ -137,11 +138,43 @@ private fun CameraFilterSection(
         query = filter.query,
         onQueryChange = { onFilterChange(filter.copy(query = it)) },
     )
+    RegionFilterRow(
+        selected = filter.region,
+        onSelect = { onFilterChange(filter.copy(region = it)) },
+    )
     KindFilterRow(selected = filter.kinds) { kinds ->
         onFilterChange(filter.copy(kinds = kinds))
     }
     AttributesFilterRow(filter = filter) { updated ->
         onFilterChange(updated)
+    }
+}
+
+@Composable
+private fun RegionFilterRow(
+    selected: CameraRegion?,
+    onSelect: (CameraRegion?) -> Unit,
+) {
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 2.dp),
+    ) {
+        items(CameraRegion.DEFAULT_REGIONS, key = { it.id }) { reg ->
+            val isSelected = (selected == null && reg == CameraRegion.ALL) || selected == reg
+            FilterChip(
+                selected = isSelected,
+                onClick = { onSelect(if (reg == CameraRegion.ALL) null else reg) },
+                label = { Text(reg.shortName) },
+                colors =
+                    FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+            )
+        }
     }
 }
 

@@ -49,6 +49,7 @@ import com.speedcam.app.ui.theme.SpeedDanger
 import com.speedcam.app.ui.theme.SpeedWarning
 import com.speedcam.core.detect.QuickSetting
 import com.speedcam.core.detect.TransportProfile
+import com.speedcam.core.media.OutputMode
 
 /**
  * Everything the settings screen reads.
@@ -60,6 +61,7 @@ data class SettingsState(
     val transport: TransportProfile,
     val hudEnabled: Boolean,
     val hudPermissionGranted: Boolean,
+    val outputMode: OutputMode = OutputMode.STANDARD,
     val silentDuringCall: Boolean,
     val cameraCount: Int,
     val sectionCount: Int = 0,
@@ -84,6 +86,7 @@ data class SettingsActions(
     val onHudEnabledChange: (Boolean) -> Unit = {},
     val onRequestHudPermission: () -> Unit = {},
     val onResetHudPosition: () -> Unit = {},
+    val onOutputModeChange: (OutputMode) -> Unit = {},
     val onSilentDuringCallChange: (Boolean) -> Unit = {},
     val onAutoUpdateChange: (Boolean) -> Unit = {},
     val onCheckForUpdates: () -> Unit = {},
@@ -178,6 +181,44 @@ private fun AudioSectionCard(
             checked = state.silentDuringCall,
             onCheckedChange = actions.onSilentDuringCallChange,
         )
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+        Text("Audio Output Channel", style = MaterialTheme.typography.titleSmall)
+        Text(
+            text =
+                "Choose where alerts are played. Bluetooth HFP interrupts car radio " +
+                    "like an incoming phone call.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        AudioOutputSelector(
+            selected = state.outputMode,
+            onChange = actions.onOutputModeChange,
+        )
+    }
+}
+
+@Composable
+private fun AudioOutputSelector(
+    selected: OutputMode,
+    onChange: (OutputMode) -> Unit,
+) {
+    val modes =
+        listOf(
+            OutputMode.STANDARD to "Auto / Media",
+            OutputMode.ALWAYS_SPEAKER to "Speaker",
+            OutputMode.BLUETOOTH_MULTIMEDIA to "BT Media",
+            OutputMode.BLUETOOTH_HFP to "BT Hands-Free (HFP)",
+        )
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(modes) { (mode, label) ->
+            FilterChip(
+                selected = mode == selected,
+                onClick = { onChange(mode) },
+                label = { Text(label) },
+            )
+        }
     }
 }
 
