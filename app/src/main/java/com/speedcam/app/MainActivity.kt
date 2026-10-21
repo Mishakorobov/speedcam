@@ -72,6 +72,7 @@ import com.speedcam.app.ui.theme.SpeedSafe
 import com.speedcam.core.data.CameraStore
 import com.speedcam.core.data.HazardReportEntity
 import com.speedcam.core.data.HazardReportType
+import com.speedcam.core.data.contracam.ContraCamArchiveSync
 import com.speedcam.core.detect.Camera
 import com.speedcam.core.geo.LatLon
 import com.speedcam.service.DetectionState
@@ -79,6 +80,9 @@ import com.speedcam.service.ProfileStore
 import com.speedcam.service.ServiceController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * The whole interface: status, the camera list, and settings.
@@ -98,6 +102,9 @@ class MainActivity : ComponentActivity() {
     private val cameras = MutableStateFlow<List<Camera>>(emptyList())
     private val blocked = MutableStateFlow<List<LatLon>>(emptyList())
 
+    private var isContraCamSyncing by mutableStateOf(false)
+    private var useContraCamDb by mutableStateOf(false)
+
     /** Tracks the fine-location grant, which background location cannot be requested without. */
     private var fineLocationGranted = false
 
@@ -116,6 +123,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        useContraCamDb = profiles.useContraCamDb
         refreshCameraList()
         requestLocationThenStart()
 
@@ -169,6 +177,8 @@ class MainActivity : ComponentActivity() {
                             isUpdating = isUpdating,
                             pendingReportCount = pendingReportCount,
                             isSyncingReports = isSyncingReports,
+                            isContraCamSyncing = isContraCamSyncing,
+                            useContraCamDb = useContraCamDb,
                         ),
                     actions = buildShellActions(),
                 )
@@ -203,7 +213,59 @@ class MainActivity : ComponentActivity() {
                 profiles.hudEnabled = !profiles.hudEnabled
                 syncHud()
             },
+            onContraCamDbChange = ::toggleContraCamDb,
+            onSyncContraCam = ::syncContraCam,
         )
+
+    private fun toggleContraCamDb(enabled: Boolean) {
+        profiles.useContraCamDb = enabled
+        useContraCamDb = enabled
+        val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
+        cameraStore.useContraCamDb = enabled
+        ServiceController.reloadDatabase(this)
+        refreshCameraList()
+        val mode = if (enabled) "ContraCam proprietary DB" else "Standard OSM DB"
+        Toast.makeText(this, "Active database: $mode", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun syncContraCam() {
+        if (isContraCamSyncing) return
+        isContraCamSyncing = true
+        lifecycleScope.launch {
+            val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
+            val sync = ContraCamArchiveSync(cameraStore.cameraDao, cacheDir)
+            val result = sync.downloadAndImport()
+            val nowStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+            profiles.lastContraCamSyncAt = nowStr
+            result.fold(
+                onSuccess = { count ->
+                    profiles.contraCamCameraCount = count
+                    profiles.lastContraCamStatus = "Success ($count cameras)"
+                    if (profiles.useContraCamDb) {
+                        cameraStore.useContraCamDb = true
+                        ServiceController.reloadDatabase(this@MainActivity)
+                        refreshCameraList()
+                    }
+                    Toast
+                        .makeText(
+                            this@MainActivity,
+                            "ContraCam archive downloaded: $count cameras",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                },
+                onFailure = { error ->
+                    profiles.lastContraCamStatus = "Error: ${error.message}"
+                    Toast
+                        .makeText(
+                            this@MainActivity,
+                            "ContraCam sync failed: ${error.message}",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                },
+            )
+            isContraCamSyncing = false
+        }
+    }
 
     override fun onResume() {
         super.onResume()
@@ -226,6 +288,7 @@ class MainActivity : ComponentActivity() {
         store = cameraStore
         lifecycleScope.launch {
             runCatching {
+                cameraStore.useContraCamDb = profiles.useContraCamDb
                 cameraStore.refreshOverrides()
                 cameraStore.refreshSections()
                 cameras.value = cameraStore.allCameras()
@@ -438,6 +501,8 @@ private data class ShellState(
     val isUpdating: Boolean = false,
     val pendingReportCount: Int = 0,
     val isSyncingReports: Boolean = false,
+    val isContraCamSyncing: Boolean = false,
+    val useContraCamDb: Boolean = false,
 )
 
 /** What the shell does, one callback per screen-level action. */
@@ -455,6 +520,8 @@ private data class ShellActions(
     val onBlockNearest: () -> Unit,
     val onReportHazard: () -> Unit,
     val onToggleHud: () -> Unit,
+    val onContraCamDbChange: (Boolean) -> Unit,
+    val onSyncContraCam: () -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -596,6 +663,11 @@ private fun SettingsTab(
                 lastHazardSyncAt = profiles.lastHazardSyncAt,
                 lastHazardSyncStatus = profiles.lastHazardSyncStatus,
                 isSyncingReports = state.isSyncingReports,
+                useContraCamDb = state.useContraCamDb,
+                lastContraCamSyncAt = profiles.lastContraCamSyncAt,
+                lastContraCamStatus = profiles.lastContraCamStatus,
+                contraCamCameraCount = profiles.contraCamCameraCount,
+                isContraCamSyncing = state.isContraCamSyncing,
             ),
         actions =
             SettingsActions(
@@ -612,6 +684,8 @@ private fun SettingsTab(
                 onCheckForUpdates = actions.onCheckForUpdates,
                 onSyncHazardOutbox = actions.onSyncHazardOutbox,
                 onClearSyncedReports = actions.onClearSyncedReports,
+                onContraCamDbChange = actions.onContraCamDbChange,
+                onSyncContraCam = actions.onSyncContraCam,
             ),
         modifier = modifier,
     )

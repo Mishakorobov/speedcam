@@ -12,6 +12,9 @@ enum class CameraSource {
 
     /** Added by the user. */
     MANUAL,
+
+    /** Proprietary ContraCam binary archive (map.dat) via HTTP. */
+    CONTRACAM,
 }
 
 /**

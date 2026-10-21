@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">contracam.ru</domain>
+        <domain includeSubdomains="true">contracam.org</domain>
+        <domain includeSubdomains="true">mybedy.website</domain>
+        <domain includeSubdomains="true">contracam.website</domain>
+        <domain includeSubdomains="true">contracam.online</domain>
+        <domain includeSubdomains="true">beget.tech</domain>
+        <domain includeSubdomains="true">mybedy.beget.tech</domain>
+    </domain-config>
+</network-security-config>

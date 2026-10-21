@@ -48,11 +48,61 @@ interface CameraDao {
     /** Unannotated bridge that unpacks the domain bounding box into the SQL bind arguments. */
     fun inBox(box: BoundingBox): List<CameraEntity> = queryBox(box.minLat, box.minLon, box.maxLat, box.maxLon)
 
+    /**
+     * Bounding-box lookup filtered by active database source mode:
+     * - when [useContraCam] is 1, queries only ContraCam cameras (`source = 3`).
+     * - when [useContraCam] is 0, queries only standard cameras (`source != 3`).
+     */
+    @Query(
+        """
+        SELECT * FROM camera
+        WHERE lat BETWEEN :minLat AND :maxLat
+          AND (
+            (:minLon <= :maxLon AND lon BETWEEN :minLon AND :maxLon)
+            OR
+            (:minLon > :maxLon AND (lon >= :minLon OR lon <= :maxLon))
+          )
+          AND (
+            (:useContraCam = 1 AND source = 3)
+            OR
+            (:useContraCam = 0 AND source != 3)
+          )
+        """,
+    )
+    fun queryBoxActiveSource(
+        minLat: Double,
+        minLon: Double,
+        maxLat: Double,
+        maxLon: Double,
+        useContraCam: Int,
+    ): List<CameraEntity>
+
+    fun inBoxActiveSource(
+        box: BoundingBox,
+        useContraCam: Boolean,
+    ): List<CameraEntity> =
+        queryBoxActiveSource(
+            minLat = box.minLat,
+            minLon = box.minLon,
+            maxLat = box.maxLat,
+            maxLon = box.maxLon,
+            useContraCam = if (useContraCam) 1 else 0,
+        )
+
     @Query("SELECT * FROM camera WHERE id = :id")
     suspend fun byId(id: Long): CameraEntity?
 
     @Query("SELECT COUNT(*) FROM camera")
     suspend fun count(): Int
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM camera
+        WHERE (:useContraCam = 1 AND source = 3)
+           OR (:useContraCam = 0 AND source != 3)
+        """,
+    )
+    suspend fun countActive(useContraCam: Int): Int
 
     @Query("SELECT COUNT(*) FROM camera WHERE source = :source")
     suspend fun countBySource(source: Int): Int
@@ -72,6 +122,16 @@ interface CameraDao {
      */
     @Query("SELECT * FROM camera ORDER BY id")
     suspend fun allCameras(): List<CameraEntity>
+
+    @Query(
+        """
+        SELECT * FROM camera
+        WHERE (:useContraCam = 1 AND source = 3)
+           OR (:useContraCam = 0 AND source != 3)
+        ORDER BY id
+        """,
+    )
+    suspend fun allCamerasActive(useContraCam: Int): List<CameraEntity>
 
     @Query("SELECT * FROM camera WHERE limit_kmh >= :minLimit ORDER BY limit_kmh ASC")
     fun observeAtOrAboveLimit(minLimit: Int): Flow<List<CameraEntity>>
@@ -244,8 +304,12 @@ interface HazardReportDao {
  */
 class CameraQueryAdapter(
     private val dao: CameraDao,
+    private val useContraCamProvider: () -> Boolean = { false },
 ) : CameraQuery {
-    override fun inBox(box: BoundingBox): List<Camera> = CameraMappers.toDomainList(dao.inBox(box))
+    override fun inBox(box: BoundingBox): List<Camera> {
+        val rows = dao.inBoxActiveSource(box, useContraCamProvider())
+        return CameraMappers.toDomainList(rows)
+    }
 }
 
 /**

@@ -21,14 +21,20 @@ class SpeedCamApp : Application() {
     val cameraStore: CameraStore
         get() =
             synchronized(this) {
-                store ?: CameraStore.open(this).also { store = it }
+                store ?: CameraStore.open(this).also {
+                    it.useContraCamDb = ProfileStore(this).useContraCamDb
+                    store = it
+                }
             }
 
     /** Closes any open handle and reopens the database from disk. */
     fun reloadCameraStore(): CameraStore =
         synchronized(this) {
             store?.close()
-            val newStore = CameraStore.open(this)
+            val newStore =
+                CameraStore.open(this).also {
+                    it.useContraCamDb = ProfileStore(this).useContraCamDb
+                }
             store = newStore
             newStore
         }

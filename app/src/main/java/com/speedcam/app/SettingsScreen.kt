@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
@@ -75,6 +76,11 @@ data class SettingsState(
     val lastHazardSyncAt: String? = null,
     val lastHazardSyncStatus: String? = null,
     val isSyncingReports: Boolean = false,
+    val useContraCamDb: Boolean = false,
+    val lastContraCamSyncAt: String? = null,
+    val lastContraCamStatus: String? = null,
+    val contraCamCameraCount: Int = 0,
+    val isContraCamSyncing: Boolean = false,
 )
 
 /** The settings screen's writes, bundled for reviewability. */
@@ -92,6 +98,8 @@ data class SettingsActions(
     val onCheckForUpdates: () -> Unit = {},
     val onSyncHazardOutbox: () -> Unit = {},
     val onClearSyncedReports: () -> Unit = {},
+    val onContraCamDbChange: (Boolean) -> Unit = {},
+    val onSyncContraCam: () -> Unit = {},
 )
 
 /**
@@ -117,6 +125,7 @@ fun SettingsScreen(
         AudioSectionCard(state = state, actions = actions)
         HudSectionCard(state = state, actions = actions)
         DatabaseSyncSectionCard(state = state, actions = actions)
+        ContraCamSectionCard(state = state, actions = actions)
         HazardOutboxSectionCard(state = state, actions = actions)
         AttributionSectionCard(dataSourceNote = state.dataSourceNote)
         Spacer(modifier = Modifier.height(16.dp))
@@ -326,6 +335,104 @@ private fun DatabaseStatusSurface(state: SettingsState) {
                 )
             }
             state.lastUpdateStatus?.takeIf { it.isNotBlank() }?.let { status ->
+                Text(
+                    text = "Status: $status",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContraCamSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "ContraCam Database (Binary Archive)",
+        icon = Icons.Default.CloudDownload,
+    ) {
+        SettingsToggleItem(
+            title = "Use ContraCam Binary Archive",
+            subtitle = "Download and use proprietary ContraCam map.dat archives instead of OSM/SpeedCam",
+            checked = state.useContraCamDb,
+            onCheckedChange = actions.onContraCamDbChange,
+        )
+
+        ContraCamStatusSurface(state = state)
+
+        Button(
+            onClick = actions.onSyncContraCam,
+            enabled = !state.isContraCamSyncing,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            if (state.isContraCamSyncing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Downloading & Parsing Archive...")
+            } else {
+                Text(
+                    if (state.contraCamCameraCount > 0) {
+                        "Update ContraCam Archive (HTTP)"
+                    } else {
+                        "Download ContraCam Archive (HTTP)"
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContraCamStatusSurface(state: SettingsState) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            val statusText =
+                if (state.contraCamCameraCount > 0) {
+                    "${state.contraCamCameraCount} ContraCam cameras installed"
+                } else {
+                    "Archive not installed yet"
+                }
+            Text(
+                text = statusText,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            val modeText =
+                if (state.useContraCamDb) {
+                    "Active detection source: ContraCam"
+                } else {
+                    "Active detection source: Standard (OSM + SpeedCam)"
+                }
+            Text(
+                text = modeText,
+                style = MaterialTheme.typography.bodySmall,
+                color =
+                    if (state.useContraCamDb) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+            )
+            state.lastContraCamSyncAt?.takeIf { it.isNotBlank() }?.let { syncAt ->
+                val label = syncAt.take(16).replace("T", " ")
+                Text(
+                    text = "Last updated: $label",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            state.lastContraCamStatus?.takeIf { it.isNotBlank() }?.let { status ->
                 Text(
                     text = "Status: $status",
                     style = MaterialTheme.typography.bodySmall,

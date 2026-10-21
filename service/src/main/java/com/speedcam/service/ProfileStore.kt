@@ -114,6 +114,26 @@ class ProfileStore(
         get() = prefs.getString(KEY_LAST_HAZARD_SYNC_STATUS, null)
         set(value) = prefs.edit().putString(KEY_LAST_HAZARD_SYNC_STATUS, value).apply()
 
+    /** Whether to use the proprietary ContraCam binary archive database instead of default OSM/SpeedCam. */
+    var useContraCamDb: Boolean
+        get() = prefs.getBoolean(KEY_USE_CONTRACAM_DB, false)
+        set(value) = prefs.edit().putBoolean(KEY_USE_CONTRACAM_DB, value).apply()
+
+    /** ISO timestamp when ContraCam binary archive was last downloaded/imported. */
+    var lastContraCamSyncAt: String?
+        get() = prefs.getString(KEY_LAST_CONTRACAM_SYNC_AT, null)
+        set(value) = prefs.edit().putString(KEY_LAST_CONTRACAM_SYNC_AT, value).apply()
+
+    /** Status or message from the last ContraCam archive sync operation. */
+    var lastContraCamStatus: String?
+        get() = prefs.getString(KEY_LAST_CONTRACAM_STATUS, null)
+        set(value) = prefs.edit().putString(KEY_LAST_CONTRACAM_STATUS, value).apply()
+
+    /** Number of cameras imported from ContraCam binary archive. */
+    var contraCamCameraCount: Int
+        get() = prefs.getInt(KEY_CONTRACAM_CAMERA_COUNT, 0)
+        set(value) = prefs.edit().putInt(KEY_CONTRACAM_CAMERA_COUNT, value).apply()
+
     /**
      * The profile detection runs under right now.
      *
@@ -151,5 +171,9 @@ class ProfileStore(
         const val KEY_HAZARD_REPORT_URL = "hazardReportUrl"
         const val KEY_LAST_HAZARD_SYNC_AT = "lastHazardSyncAt"
         const val KEY_LAST_HAZARD_SYNC_STATUS = "lastHazardSyncStatus"
+        const val KEY_USE_CONTRACAM_DB = "useContraCamDb"
+        const val KEY_LAST_CONTRACAM_SYNC_AT = "lastContraCamSyncAt"
+        const val KEY_LAST_CONTRACAM_STATUS = "lastContraCamStatus"
+        const val KEY_CONTRACAM_CAMERA_COUNT = "contraCamCameraCount"
     }
 }

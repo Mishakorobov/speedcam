@@ -52,11 +52,16 @@ class CameraStore(
     /** Observes all reports stored in the local outbox. */
     fun observeReports(): Flow<List<HazardReportEntity>> = hazardReportDao.observeAll()
 
+    /** Whether to query cameras from the proprietary ContraCam database instead of OSM/SpeedCam. */
+    @Volatile
+    var useContraCamDb: Boolean = false
+
     /**
      * The adapter is created once and reused: Room caches the generated DAO instance, so this
      * is a stable view over the same underlying query rather than a per-call allocation.
      */
-    private val query: CameraQueryAdapter = CameraQueryAdapter(database.cameraDao())
+    private val query: CameraQueryAdapter =
+        CameraQueryAdapter(database.cameraDao()) { useContraCamDb }
 
     /**
      * The query with the user's overrides applied.
@@ -67,19 +72,22 @@ class CameraStore(
     private val blockingQuery = BlockingCameraQuery(query)
 
     /** How many cameras are loaded, for the settings screen. */
-    suspend fun cameraCount(): Int = runCatching { database.cameraDao().count() }.getOrDefault(0)
+    suspend fun cameraCount(): Int {
+        val active = if (useContraCamDb) 1 else 0
+        return runCatching { database.cameraDao().countActive(active) }.getOrDefault(0)
+    }
 
     /**
      * Every camera, for the browser screen.
      *
      * A snapshot rather than an observable, because the database is rebuilt out of band by
-     * 	ools/import and the screen re-reads on resume; a live query would repaint the list
+     * tools/import and the screen re-reads on resume; a live query would repaint the list
      * for changes the driver did not make.
      *
      * Suspend because Room refuses main-thread access and the UI calls this on resume.
      */
     suspend fun allCameras(): List<Camera> =
-        runCatching { database.cameraDao().allCameras() }
+        runCatching { database.cameraDao().allCamerasActive(if (useContraCamDb) 1 else 0) }
             .getOrDefault(emptyList())
             .map(CameraMappers::toDomain)
 

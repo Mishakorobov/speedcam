@@ -165,6 +165,7 @@ class DetectionService : Service() {
 
         scope.launch {
             val cameraStore = store ?: CameraStore.open(applicationContext).also { store = it }
+            cameraStore.useContraCamDb = profiles.useContraCamDb
             // The driver's blocks and active SPECS corridors must be in force before the first query.
             cameraStore.refreshOverrides()
             cameraStore.refreshSections()
@@ -195,6 +196,7 @@ class DetectionService : Service() {
     /** Reloads the camera database queries and active pipeline after an update. */
     private suspend fun reloadDatabase() {
         val currentStore = store ?: CameraStore.open(applicationContext).also { store = it }
+        currentStore.useContraCamDb = profiles.useContraCamDb
         currentStore.refreshOverrides()
         currentStore.refreshSections()
         activePipeline = DetectionPipeline(currentStore.cameraQuery(), currentStore.sectionQuery())
