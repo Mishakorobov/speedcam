@@ -1,4 +1,4 @@
-name: Camera Database Release
+name: "Camera Database Release"
 
 on:
   schedule:
@@ -17,7 +17,7 @@ on:
       custom_version:
         description: 'Override release version (default: YYYY.MM.DD)'
         type: string
-        required: false
+        default: ''
 
 concurrency:
   group: db-release
@@ -50,11 +50,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y sqlite3 curl jq zip
 
+      - name: Make scripts executable
+        run: |
+          chmod +x gradlew tools/import/update-osm.sh
+
       - name: Determine release version
         id: vars
         run: |
           DATE_TAG=$(date -u +'%Y.%m.%d')
-          INPUT_VERSION="${{ github.event.inputs.custom_version }}"
+          INPUT_VERSION="${{ inputs.custom_version }}"
           if [ -n "$INPUT_VERSION" ]; then
             VERSION="$INPUT_VERSION"
           else
@@ -64,14 +68,10 @@ jobs:
           echo "TAG_NAME=db-$VERSION" >> $GITHUB_ENV
           echo "Calculated version: $VERSION"
 
-      - name: Make scripts executable
-        run: |
-          chmod +x gradlew tools/import/update-osm.sh
-
       - name: Fetch OSM extracts & build camera database
         run: |
           FORCE_ARG="false"
-          if [ "${{ github.event.inputs.force_download }}" = "true" ]; then
+          if [ "${{ inputs.force_download }}" = "true" ]; then
             FORCE_ARG="true"
           fi
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/db-${VERSION}/russia.db"
@@ -86,7 +86,6 @@ jobs:
         run: |
           ./gradlew :tools:import:verifyDatabase -Pdb=data/russia.db -Pmanifest=data/manifest.json
           
-          # Extract stats for summary and release notes
           CAMERAS=$(sqlite3 data/russia.db "SELECT count(*) FROM camera;")
           SECTIONS=$(sqlite3 data/russia.db "SELECT count(*) FROM section;")
           SHA256=$(jq -r .sha256 data/manifest.json)
@@ -111,26 +110,18 @@ jobs:
           cd ..
 
       - name: Publish GitHub Release
-        if: github.event_name == 'schedule' || github.event.inputs.publish_release != 'false'
+        if: github.event_name == 'schedule' || inputs.publish_release != false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RELEASE_TITLE="SpeedCam Database v${VERSION}"
           RELEASE_NOTES="Weekly automated build of the Russian camera database compiled from OpenStreetMap extracts and community SpeedCam sources.
 
-### Release Details
-- **Version:** \`${VERSION}\`
-- **Cameras:** ${CAMERAS}
-- **Average-speed sections:** ${SECTIONS}
-- **SHA-256 (russia.db):** \`${SHA256}\`
+          - Version: ${VERSION}
+          - Cameras: ${CAMERAS}
+          - Sections: ${SECTIONS}
+          - SHA-256 (russia.db): ${SHA256}"
 
-### Included Files
-- \`russia.db\`: SQLite database ready for installation into the app.
-- \`russia.db.zip\` / \`russia.db.gz\`: Compressed archives for bandwidth saving.
-- \`manifest.json\`: Verification manifest used by in-app auto-updater.
-- \`checksums.txt\`: SHA-256 checksums for all release artifacts."
-
-          # Check if release/tag already exists and replace or create
           if gh release view "db-${VERSION}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             echo "Release db-${VERSION} already exists. Uploading updated assets..."
             gh release upload "db-${VERSION}" \
