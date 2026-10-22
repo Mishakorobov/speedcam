@@ -95,7 +95,7 @@ for entry in "${DISTRICTS[@]}"; do
                 mv "$target.tmp" "$target"
                 success=true
                 log "$name successfully downloaded and verified ($tmp_md5)"
-                ((changed_count++))
+                changed_count=$((changed_count + 1))
                 break
             else
                 log "Checksum mismatch for $name (attempt $attempt/3). Retrying..."
