@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CarCrash
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Explore
@@ -286,7 +287,14 @@ private fun VectorMapScreenLayout(
                 val vLat = detectionState.currentLat
                 val vLon = detectionState.currentLon
                 val point = if (vLat != null && vLon != null) LatLon(vLat, vLon) else null
-                CameraInspectorCard(cam, point, actions, onClose = { mapState.inspectCamera(null) })
+                val isBlocked = mapData.blocked.any { Geo.haversineMeters(it, cam.position) <= 40.0 }
+                CameraInspectorCard(
+                    camera = cam,
+                    isBlocked = isBlocked,
+                    vehiclePoint = point,
+                    actions = actions,
+                    onClose = { mapState.inspectCamera(null) },
+                )
             }
         }
 
@@ -314,9 +322,16 @@ private fun VectorMapScreenLayout(
                     mapState.inspectCamera(cam)
                 },
                 onUnblockCamera = { row ->
-                    mapData.cameras.find { it.id == row.id }?.let { cam ->
-                        actions.onUnblockCamera(cam)
-                    }
+                    val cam =
+                        mapData.cameras.find { it.id == row.id } ?: Camera(
+                            id = row.id,
+                            position = LatLon(row.latitude, row.longitude),
+                            limitKmh = row.limitKmh,
+                            kind = row.kind,
+                            source = row.source,
+                            operator = row.operator,
+                        )
+                    actions.onUnblockCamera(cam)
                 },
             )
         }
@@ -590,6 +605,7 @@ private fun MapSecondaryControls(state: VectorMapState) {
 @Composable
 private fun CameraInspectorCard(
     camera: Camera,
+    isBlocked: Boolean,
     vehiclePoint: LatLon?,
     actions: VectorMapActions,
     onClose: () -> Unit,
@@ -601,11 +617,11 @@ private fun CameraInspectorCard(
         elevation = CardDefaults.cardElevation(12.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            InspectorHeader(camera, onClose)
+            InspectorHeader(camera, isBlocked, onClose)
             Spacer(modifier = Modifier.height(8.dp))
             InspectorBody(camera, vehiclePoint)
             Spacer(modifier = Modifier.height(14.dp))
-            InspectorActionsRow(camera, actions)
+            InspectorActionsRow(camera, isBlocked, actions)
         }
     }
 }
@@ -613,6 +629,7 @@ private fun CameraInspectorCard(
 @Composable
 private fun InspectorHeader(
     camera: Camera,
+    isBlocked: Boolean,
     onClose: () -> Unit,
 ) {
     Row(
@@ -621,7 +638,13 @@ private fun InspectorHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color(0xFFEF4444)))
+            Box(
+                modifier =
+                    Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(if (isBlocked) Color(0xFF64748B) else Color(0xFFEF4444)),
+            )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "${camera.kind.toRussianTitle()} #${camera.id}",
@@ -629,6 +652,14 @@ private fun InspectorHeader(
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
             )
+            if (isBlocked) {
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "(Заглушена)",
+                    fontSize = 12.sp,
+                    color = Color(0xFF94A3B8),
+                )
+            }
         }
         IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) {
             Icon(imageVector = Icons.Default.Close, contentDescription = "Закрыть", tint = Color.White)
@@ -685,21 +716,35 @@ private fun InspectorBody(
 @Composable
 private fun InspectorActionsRow(
     camera: Camera,
+    isBlocked: Boolean,
     actions: VectorMapActions,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        OutlinedButton(
-            onClick = { actions.onBlockCamera(camera) },
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
-        ) {
-            Icon(imageVector = Icons.Default.Block, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Блокировать", fontSize = 12.sp)
+        if (isBlocked) {
+            Button(
+                onClick = { actions.onUnblockCamera(camera) },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+            ) {
+                Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Разблокировать", fontSize = 12.sp)
+            }
+        } else {
+            OutlinedButton(
+                onClick = { actions.onBlockCamera(camera) },
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
+            ) {
+                Icon(imageVector = Icons.Default.Block, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Блокировать", fontSize = 12.sp)
+            }
         }
 
         Button(

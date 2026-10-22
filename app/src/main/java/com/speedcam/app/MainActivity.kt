@@ -458,6 +458,7 @@ class MainActivity : ComponentActivity() {
     private fun buildShellActions(): ShellActions =
         ShellActions(
             onEnableChange = ::setDetectionEnabled,
+            onBlock = ::block,
             onUnblock = ::unblock,
             onRequestHudPermission = ::requestOverlayPermission,
             onResetHudPosition = { HudOverlayManager.resetPosition(this) },
@@ -805,6 +806,15 @@ class MainActivity : ComponentActivity() {
         DetectionState.update { it.copy(running = enabled) }
     }
 
+    private fun block(row: CameraRow) {
+        val cameraStore = store ?: return
+        lifecycleScope.launch {
+            runCatching { cameraStore.block(LatLon(row.latitude, row.longitude)) }
+                .onFailure { Log.w(TAG, "Could not block: ${it.message}") }
+            blocked.value = cameraStore.overrides.blocked
+        }
+    }
+
     private fun unblock(row: CameraRow) {
         val cameraStore = store ?: return
         lifecycleScope.launch {
@@ -973,6 +983,7 @@ private data class ShellState(
 /** What the shell does, one callback per screen-level action. */
 private data class ShellActions(
     val onEnableChange: (Boolean) -> Unit,
+    val onBlock: (CameraRow) -> Unit,
     val onUnblock: (CameraRow) -> Unit,
     val onRequestHudPermission: () -> Unit,
     val onResetHudPosition: () -> Unit,
@@ -1118,7 +1129,7 @@ private fun ShellTabContent(
                     ),
                 actions =
                     VectorMapActions(
-                        onBlockCamera = { cam -> actions.onUnblock(cam.toCameraRow()) },
+                        onBlockCamera = { cam -> actions.onBlock(cam.toCameraRow()) },
                         onUnblockCamera = { cam -> actions.onUnblock(cam.toCameraRow()) },
                         onReportCamera = { cam ->
                             actions.onReportCamera(

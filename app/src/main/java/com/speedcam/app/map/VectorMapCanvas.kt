@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.speedcam.core.detect.Camera
 import com.speedcam.core.detect.CameraKind
 import com.speedcam.core.detect.SectionRecord
+import com.speedcam.core.geo.Geo
 import com.speedcam.core.geo.LatLon
 import com.speedcam.core.geo.MapViewport
 import com.speedcam.core.geo.MercatorProjection
@@ -58,6 +59,7 @@ private data class RenderContext(
     val palette: MapPalette,
     val pulseProgress: Float,
     val tileManager: OfflineTileManager?,
+    val tileRevision: Long,
 )
 
 private data class RadarDistanceParams(
@@ -69,6 +71,7 @@ private data class RadarDistanceParams(
 
 private data class CameraLayerParams(
     val cameras: List<Camera>,
+    val blocked: List<LatLon>,
     val selectedCamera: Camera?,
     val nearestWarningHazard: HazardView?,
     val showCones: Boolean,
@@ -137,7 +140,7 @@ fun VectorMapCanvas(
                 width = size.width.toDouble(),
                 height = size.height.toDouble(),
             )
-        val ctx = RenderContext(state, detectionState, mapData, palette, pulseProgress, tileManager)
+        val ctx = RenderContext(state, detectionState, mapData, palette, pulseProgress, tileManager, tileRevision)
         renderMapLayers(ctx, viewport, textMeasurer)
     }
 }
@@ -149,10 +152,10 @@ private fun DrawScope.renderMapLayers(
 ) {
     drawRect(color = ctx.palette.background)
 
+    drawSpatialGrid(viewport.width, viewport.height, ctx.palette)
+
     if (ctx.state.showTiles && ctx.tileManager != null) {
         drawTileLayer(ctx.tileManager, viewport, ctx.palette)
-    } else {
-        drawSpatialGrid(viewport.width, viewport.height, ctx.palette)
     }
 
     val vehicleLat = ctx.detectionState.currentLat
@@ -175,6 +178,7 @@ private fun DrawScope.renderMapLayers(
     val cameraParams =
         CameraLayerParams(
             cameras = ctx.mapData.cameras,
+            blocked = ctx.mapData.blocked,
             selectedCamera = ctx.state.inspectedCamera,
             nearestWarningHazard = ctx.detectionState.nearest,
             showCones = ctx.state.showCameraCones,
@@ -528,9 +532,13 @@ private fun DrawScope.renderCameraMarker(
 ) {
     val cx = pos.x
     val cy = pos.y
+    val isBlocked =
+        params.blocked.any {
+            Geo.haversineMeters(it, cam.position) <= 40.0
+        }
     val isSelected = params.selectedCamera?.id == cam.id
-    val isWarning = params.nearestWarningHazard?.cameraId == cam.id
-    val color = getCameraColor(cam.kind)
+    val isWarning = !isBlocked && params.nearestWarningHazard?.cameraId == cam.id
+    val color = if (isBlocked) Color(0xFF64748B) else getCameraColor(cam.kind)
 
     val facing = cam.facingDeg
     if (params.showCones && facing != null) {
