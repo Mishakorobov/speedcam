@@ -89,14 +89,14 @@ abstract class StageCameraDatabaseTask : DefaultTask() {
 
     @TaskAction
     fun stage() {
-        val from: File = source.get().asFile
+        val from: File? = source.orNull?.asFile
         val to: File = target.get().asFile
 
-        if (!from.isFile) {
+        if (from == null || !from.isFile) {
             // Loudly, because the alternative failure is invisible: the app would install,
             // open an empty database and never warn about anything.
             logger.warn(
-                "WARNING: $from is missing, so no camera database will be bundled and the app " +
+                "WARNING: Camera database source is missing, so no camera database will be bundled and the app " +
                     "will start with zero cameras. Run tools\\import\\update-osm.bat to build it.",
             )
             Files.deleteIfExists(to.toPath())
@@ -151,7 +151,9 @@ val stageCameraDatabase =
         description = "Stages data/russia.db into the APK as an asset."
         group = "build"
 
-        source.set(cameraDatabaseSource)
+        if (cameraDatabaseSource.isFile) {
+            source.set(cameraDatabaseSource)
+        }
         target.set(stagedCameraDatabase)
     }
 
