@@ -7,6 +7,7 @@ import android.util.Log
 import android.widget.Toast
 import com.speedcam.app.SpeedCamApp
 import com.speedcam.app.sync.HazardReportSyncWorker
+import com.speedcam.app.util.toRussianTitle
 import com.speedcam.core.data.HazardReportEntity
 import com.speedcam.core.data.HazardReportType
 import com.speedcam.core.geo.LatLon
@@ -91,6 +92,7 @@ object HudOverlayManager {
                 onBlockNearest = { blockNearest(appContext) },
                 onMuteNearest = { muteNearest(appContext) },
                 onReportHazard = { reportHazard(appContext) },
+                onReportSpecificHazard = { type -> reportSpecificHazard(appContext, type) },
             )
 
         val shown = newOverlay.show()
@@ -139,7 +141,7 @@ object HudOverlayManager {
         val appContext = context.applicationContext
         HudPositionStore(appContext).clear()
         overlay?.resetToDefaultPosition()
-        Toast.makeText(appContext, "HUD position reset to default", Toast.LENGTH_SHORT).show()
+        Toast.makeText(appContext, "Позиция HUD сброшена по умолчанию", Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -148,7 +150,7 @@ object HudOverlayManager {
     fun muteNearest(context: Context) {
         DetectionState.update { it.copy(muted = !it.muted) }
         val muted = DetectionState.state.value.muted
-        val message = if (muted) "HUD alert muted" else "HUD alert unmuted"
+        val message = if (muted) "Звук HUD отключен" else "Звук HUD включен"
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 
@@ -163,7 +165,7 @@ object HudOverlayManager {
                 store.block(LatLon(nearest.latitude, nearest.longitude))
             }.onSuccess {
                 mainHandler.post {
-                    Toast.makeText(context, "Camera #${nearest.cameraId} blocked", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Камера #${nearest.cameraId} заблокирована", Toast.LENGTH_SHORT).show()
                 }
             }.onFailure { e ->
                 Log.w(TAG, "Could not block camera from HUD: ${e.message}")
@@ -193,7 +195,7 @@ object HudOverlayManager {
                         HazardReportType.NEW_CAMERA.ordinal
                     },
                 speedLimitKmh = state.activeSection?.limitKmh ?: nearest?.limitKmh,
-                comment = if (nearest != null) "Reported via Floating HUD" else "New camera via Floating HUD",
+                comment = if (nearest != null) "Отметка через плавающий HUD" else "Новая камера через плавающий HUD",
             )
 
         scope.launch(Dispatchers.IO) {
@@ -203,10 +205,79 @@ object HudOverlayManager {
                 HazardReportSyncWorker.triggerImmediate(context)
             }.onSuccess {
                 mainHandler.post {
-                    Toast.makeText(context, "Hazard report queued from HUD", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Отметка об опасности поставлена в очередь из HUD", Toast.LENGTH_SHORT).show()
                 }
             }.onFailure { e ->
                 Log.w(TAG, "Could not queue hazard report from HUD: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * One-tap reporting for temporary driver hazards (DPS patrol, mobile tripod, accident).
+     */
+    fun reportSpecificHazard(
+        context: Context,
+        type: HazardReportType,
+        customComment: String? = null,
+    ) {
+        val state = DetectionState.state.value
+        val lat = state.currentLat ?: state.nearest?.latitude
+        val lon = state.currentLon ?: state.nearest?.longitude
+        if (lat == null || lon == null) {
+            mainHandler.post {
+                Toast.makeText(context, "Нет GPS координат для отметки", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        val defaultComment =
+            when (type) {
+                HazardReportType.DPS_PATROL -> "Засада ДПС (быстрая отметка)"
+                HazardReportType.MOBILE_TRIPOD -> "Мобильная тренога (быстрая отметка)"
+                HazardReportType.ROAD_ACCIDENT -> "Авария на дороге (быстрая отметка)"
+                else -> "Отметка через плавающий HUD"
+            }
+
+        val report =
+            HazardReportEntity(
+                lat = lat,
+                lon = lon,
+                headingDeg = state.currentBearingDeg,
+                cameraId = state.nearest?.cameraId,
+                reportType = type.ordinal,
+                speedLimitKmh = state.nearest?.limitKmh ?: state.activeSection?.limitKmh,
+                comment = customComment ?: defaultComment,
+            )
+
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val store = SpeedCamApp.cameraStore(context)
+                store.submitReport(report)
+
+                if (type == HazardReportType.DPS_PATROL || type == HazardReportType.MOBILE_TRIPOD) {
+                    val timeStr =
+                        java.text
+                            .SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+                            .format(java.util.Date())
+                    store.addCamera(
+                        lat = lat,
+                        lon = lon,
+                        kind = com.speedcam.core.detect.CameraKind.MOBILE,
+                        limitKmh = state.nearest?.limitKmh ?: state.activeSection?.limitKmh,
+                        note = type.toRussianTitle(),
+                        created = timeStr,
+                    )
+                }
+
+                HazardReportSyncWorker.triggerImmediate(context)
+            }.onSuccess {
+                mainHandler.post {
+                    val label = type.toRussianTitle()
+                    Toast.makeText(context, "Отметка «$label» отправлена!", Toast.LENGTH_SHORT).show()
+                }
+            }.onFailure { e ->
+                Log.w(TAG, "Could not queue hazard report: ${e.message}")
             }
         }
     }

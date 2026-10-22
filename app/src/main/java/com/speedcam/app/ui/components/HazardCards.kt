@@ -46,6 +46,7 @@ import com.speedcam.app.ui.theme.BrandPrimaryDark
 import com.speedcam.app.ui.theme.SpeedDanger
 import com.speedcam.app.ui.theme.SpeedSafe
 import com.speedcam.app.ui.theme.SpeedWarning
+import com.speedcam.app.util.toRussianTitle
 import com.speedcam.service.HazardView
 import com.speedcam.service.SectionUiState
 import kotlin.math.roundToInt
@@ -147,10 +148,7 @@ private fun HazardKindTitle(
         }
         Column {
             Text(
-                text =
-                    hazard.kind.name
-                        .replace('_', ' ')
-                        .uppercase(),
+                text = hazard.kind.toRussianTitle().uppercase(),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = if (overLimit) SpeedDanger else MaterialTheme.colorScheme.onSurface,
@@ -164,7 +162,7 @@ private fun HazardKindTitle(
                 )
                 Spacer(modifier = Modifier.width(3.dp))
                 Text(
-                    text = if (hazard.behind) "ONCOMING / REAR" else "AHEAD",
+                    text = if (hazard.behind) "В СПИНУ / ВСТРЕЧНАЯ" else "ВПЕРЕДИ",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = if (hazard.behind) SpeedWarning else SpeedSafe,
@@ -183,7 +181,7 @@ private fun HazardQuickActionButtons(
         IconButton(onClick = onMute, modifier = Modifier.size(36.dp)) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.VolumeOff,
-                contentDescription = "Mute alert",
+                contentDescription = "Заглушить оповещение",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),
             )
@@ -191,7 +189,7 @@ private fun HazardQuickActionButtons(
         IconButton(onClick = onBlock, modifier = Modifier.size(36.dp)) {
             Icon(
                 imageVector = Icons.Default.Block,
-                contentDescription = "Block camera",
+                contentDescription = "Заблокировать камеру",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp),
             )
@@ -212,13 +210,13 @@ private fun PrimaryHazardDistanceRow(
     ) {
         Column {
             Text(
-                text = "$distance m",
+                text = "$distance м",
                 style = MaterialTheme.typography.displayMedium,
                 fontWeight = FontWeight.Black,
                 color = if (overLimit) SpeedDanger else MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "DISTANCE TO CAMERA",
+                text = "РАССТОЯНИЕ ДО КАМЕРЫ",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 letterSpacing = 0.5.sp,
@@ -265,12 +263,12 @@ fun SecondaryHazardCard(
                 )
                 Column {
                     Text(
-                        text = "Next: ${hazard.kind.name.replace('_', ' ').lowercase()}",
+                        text = "Следующая: ${hazard.kind.toRussianTitle().lowercase()}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "in ${hazard.distanceM.roundToInt()} m",
+                        text = "через ${hazard.distanceM.roundToInt()} м",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -342,7 +340,7 @@ private fun SpecsSectionHeader(
                 modifier = Modifier.size(22.dp),
             )
             Text(
-                text = "AVERAGE SPEED CORRIDOR",
+                text = "КОНТРОЛЬ СРЕДНЕЙ СКОРОСТИ",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = if (isOverLimit) SpeedDanger else BrandPrimaryDark,
@@ -365,13 +363,13 @@ private fun SpecsSectionMetrics(
     ) {
         Column {
             Text(
-                text = "$avgSpeed km/h",
+                text = "$avgSpeed км/ч",
                 style = MaterialTheme.typography.displaySmall,
                 fontWeight = FontWeight.Black,
                 color = if (isOverLimit) SpeedDanger else SpeedSafe,
             )
             Text(
-                text = if (isOverLimit) "OVER SECTION LIMIT!" else "YOUR AVERAGE SPEED",
+                text = if (isOverLimit) "ПРЕВЫШЕНИЕ СКОРОСТИ!" else "ВАША СРЕДНЯЯ СКОРОСТЬ",
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = if (isOverLimit) SpeedDanger else SpeedSafe,
@@ -379,12 +377,12 @@ private fun SpecsSectionMetrics(
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                text = "$remaining m",
+                text = "$remaining м",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "REMAINING",
+                text = "ОСТАЛОСЬ",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -435,16 +433,16 @@ fun EmptyHazardCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (radarActive) "Road Clear Ahead" else "Radar Detection Paused",
+                    text = if (radarActive) "Впереди свободно" else "Радар-детектор на паузе",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text =
                         if (radarActive) {
-                            "No speed cameras or road hazards within detection radius."
+                            "Камер и дорожных опасностей по курсу не обнаружено."
                         } else {
-                            "Tap the button above to resume radar detection."
+                            "Нажмите кнопку выше для возобновления мониторинга."
                         },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -2,11 +2,16 @@ package com.speedcam.app.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Brand & Accent Colors
-val BrandPrimaryLight = Color(0xFF0284C7)
-val BrandPrimaryDark = Color(0xFF38BDF8)
-val BrandSecondaryLight = Color(0xFF475569)
-val BrandSecondaryDark = Color(0xFF94A3B8)
+// SpeedCam Official Brand Palette (BRAND_GUIDELINES.md)
+// Primary Accent: Blaze Orange (#FF5E1E) - Dynamic automotive energy & alerts
+val BrandPrimaryLight = Color(0xFFFF5E1E)
+val BrandPrimaryDark = Color(0xFFFF5E1E)
+val BrandPrimaryContainer = Color(0xFF431606)
+
+// Secondary Accent: Radar Cyan (#00E5FF) - Radar pulses, GPS lock, tech precision
+val BrandSecondaryLight = Color(0xFF0097A7)
+val BrandSecondaryDark = Color(0xFF00E5FF)
+val BrandSecondaryContainer = Color(0xFF00363D)
 
 // Semantic Alert Colors
 val SpeedSafe = Color(0xFF10B981) // Safe / Within limit
@@ -16,11 +21,11 @@ val SpeedWarningContainer = Color(0xFF78350F)
 val SpeedDanger = Color(0xFFEF4444) // Danger / Overspeed
 val SpeedDangerContainer = Color(0xFF7F1D1D)
 
-// Surface & Background Colors - Dark Automotive Mode (Optimized for OLED & driving glare)
-val DarkBackground = Color(0xFF0A0D14)
-val DarkSurface = Color(0xFF131722)
-val DarkSurfaceElevated = Color(0xFF1C2230)
-val DarkSurfaceBorder = Color(0xFF283144)
+// Surface & Background Colors - Dark Automotive Mode (Carbon Slate #0F172A)
+val DarkBackground = Color(0xFF0A0F1D)
+val DarkSurface = Color(0xFF0F172A)
+val DarkSurfaceElevated = Color(0xFF1E293B)
+val DarkSurfaceBorder = Color(0xFF334155)
 val DarkTextPrimary = Color(0xFFF8FAFC)
 val DarkTextSecondary = Color(0xFF94A3B8)
 val DarkTextMuted = Color(0xFF64748B)
@@ -35,8 +40,8 @@ val LightTextSecondary = Color(0xFF475569)
 val LightTextMuted = Color(0xFF94A3B8)
 
 // HUD Overlay Specific Glassmorphism
-val HudOverlayDark = Color(0xEE0F131D)
-val HudOverlayBorder = Color(0x4038BDF8)
+val HudOverlayDark = Color(0xEE0F172A)
+val HudOverlayBorder = Color(0x6600E5FF) // Radar Cyan glow
 val HudOverlayDanger = Color(0xF2B91C1C)
 val HudOverlayDangerBorder = Color(0x80EF4444)
 

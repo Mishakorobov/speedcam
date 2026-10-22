@@ -45,6 +45,12 @@ enum class CameraKind {
     /** Dummy / non-functional housing. */
     DUMMY,
 
+    /** Dedicated bus / public transport lane enforcement. */
+    BUS_LANE,
+
+    /** Road marking, solid line, and lane change enforcement. */
+    ROAD_MARKING,
+
     UNKNOWN,
 }
 

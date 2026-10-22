@@ -24,6 +24,10 @@
     <!-- The HUD draws over other apps. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- Android Auto and Automotive OS navigation templates and surface rendering -->
+    <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
+    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
+
     <!-- Declared required so the app is filtered out of devices with no GPS hardware. -->
     <uses-feature
         android:name="android.hardware.location.gps"

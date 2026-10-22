@@ -3,6 +3,7 @@ package com.speedcam.app
 import android.app.Application
 import android.content.Context
 import com.speedcam.app.hud.HudOverlayManager
+import com.speedcam.app.map.OfflineTileManager
 import com.speedcam.app.sync.DatabaseSyncWorker
 import com.speedcam.app.sync.HazardReportSyncWorker
 import com.speedcam.app.widget.SpeedCamWidgetManager
@@ -10,7 +11,7 @@ import com.speedcam.core.data.CameraStore
 import com.speedcam.service.ProfileStore
 
 /**
- * Holds the single [CameraStore] for the life of the process.
+ * Holds the single [CameraStore] and [OfflineTileManager] for the life of the process.
  *
  * `SpeedCamApp` is the natural owner because the database handle must outlive any single
  * screen or service binding, and Android guarantees exactly one Application instance per
@@ -19,6 +20,7 @@ import com.speedcam.service.ProfileStore
  */
 class SpeedCamApp : Application() {
     private var store: CameraStore? = null
+    private var tileManagerInstance: OfflineTileManager? = null
 
     val cameraStore: CameraStore
         get() =
@@ -26,6 +28,14 @@ class SpeedCamApp : Application() {
                 store ?: CameraStore.open(this).also {
                     it.useContraCamDb = ProfileStore(this).useContraCamDb
                     store = it
+                }
+            }
+
+    val offlineTileManager: OfflineTileManager
+        get() =
+            synchronized(this) {
+                tileManagerInstance ?: OfflineTileManager(this).also {
+                    tileManagerInstance = it
                 }
             }
 
@@ -60,6 +70,8 @@ class SpeedCamApp : Application() {
 
     override fun onTerminate() {
         closeCameraStore()
+        tileManagerInstance?.close()
+        tileManagerInstance = null
         super.onTerminate()
     }
 
@@ -74,5 +86,8 @@ class SpeedCamApp : Application() {
 
         /** Closes the database handle cleanly across the process. */
         fun closeCameraStore(context: Context) = from(context).closeCameraStore()
+
+        /** Reaches the process-wide offline tile manager. */
+        fun offlineTileManager(context: Context): OfflineTileManager = from(context).offlineTileManager
     }
 }

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title-b">
+  <title id="title-b">SpeedCam Concept B - Kinetic S-Radar</title>
+  <!-- Upper Radar Arc / S-Crest -->
+  <path fill="#0F172A" d="M 198 60 C 182 38 157 24 128 24 C 80 24 42 62 42 110 C 42 122 45 133 56 142 L 84 114 C 79 108 76 102 76 96 C 76 74 99 56 128 56 C 146 56 162 66 172 86 L 198 60 Z"/>
+  <!-- Lower Radar Arc / S-Base -->
+  <path fill="#0F172A" d="M 58 196 C 74 218 99 232 128 232 C 176 232 214 194 214 146 C 214 134 211 123 200 114 L 172 142 C 177 148 180 154 180 160 C 180 182 157 200 128 200 C 110 200 94 190 84 170 L 58 196 Z"/>
+  <!-- Center Camera Aperture / Radar Reticle -->
+  <path fill="#0F172A" fill-rule="evenodd" d="M 128 86 A 42 42 0 1 1 127.9 86 Z M 128 106 A 22 22 0 1 0 128.1 106 Z"/>
+  <!-- Center Focal Sensor / Speed Core -->
+  <circle cx="128" cy="128" r="11" fill="#0F172A"/>
+</svg>

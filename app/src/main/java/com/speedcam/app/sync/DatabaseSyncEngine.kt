@@ -63,7 +63,7 @@ class DatabaseSyncEngine(
      */
     suspend fun sync(url: String = DEFAULT_MANIFEST_URL): SyncResult {
         if (url.isBlank()) {
-            return SyncResult(SyncOutcome.FAILED, message = "No update URL configured")
+            return SyncResult(SyncOutcome.FAILED, message = "URL для обновления базы не указан.")
         }
 
         val cacheDir = context.cacheDir
@@ -80,7 +80,7 @@ class DatabaseSyncEngine(
                     if (currentBuiltAt != null && currentBuiltAt.isNotBlank() && currentBuiltAt >= manifest.builtAt) {
                         return SyncResult(
                             outcome = SyncOutcome.ALREADY_UP_TO_DATE,
-                            message = "Database is up to date (current: ${currentBuiltAt.take(10)})",
+                            message = "База камер актуальна (версия от ${currentBuiltAt.take(10)})",
                         )
                     }
                     manifest.downloadUrl to manifest.sha256
@@ -89,18 +89,77 @@ class DatabaseSyncEngine(
             val downloadResult = downloadFile(downloadUrl, tempCandidate, expectedSha256)
             if (downloadResult.isFailure) {
                 tempCandidate.delete()
+                val error = downloadResult.exceptionOrNull() ?: IOException("Download failed")
                 return SyncResult(
                     outcome = SyncOutcome.FAILED,
-                    message = "Download failed: ${downloadResult.exceptionOrNull()?.message}",
+                    message = formatErrorMessage(error, downloadUrl),
                 )
             }
 
             applyCandidateDatabase(tempCandidate)
         } catch (e: Throwable) {
             Log.w(TAG, "Sync error: ${e.message}", e)
-            SyncResult(outcome = SyncOutcome.FAILED, message = e.message ?: "Unknown sync error")
+            SyncResult(outcome = SyncOutcome.FAILED, message = formatErrorMessage(e, url))
         } finally {
             tempCandidate.delete()
+        }
+    }
+
+    /**
+     * Re-installs the fresh bundled database from APK assets, resetting the database
+     * to factory defaults while preserving user overrides and hazard reports.
+     */
+    suspend fun restoreBundledDatabase(): SyncResult {
+        val existingStore = SpeedCamApp.cameraStore(context)
+        val preservedOverrides =
+            runCatching { existingStore.overrideDao.all() }.getOrDefault(emptyList())
+        val preservedReports =
+            runCatching { existingStore.hazardReportDao.allReports() }.getOrDefault(emptyList())
+
+        SpeedCamApp.closeCameraStore(context)
+
+        val installer = CameraDatabaseInstaller.forContext(context)
+        val installResult = installer.forceInstallFromAssets()
+        if (installResult.isFailure) {
+            SpeedCamApp.reloadCameraStore(context)
+            val errorMsg = installResult.exceptionOrNull()?.message ?: "unknown"
+            return SyncResult(
+                outcome = SyncOutcome.FAILED,
+                message = "Не удалось восстановить базу из APK: $errorMsg",
+            )
+        }
+
+        return try {
+            val newStore = SpeedCamApp.reloadCameraStore(context)
+            val count = newStore.cameraCount()
+            if (preservedOverrides.isNotEmpty()) {
+                newStore.overrideDao.upsertAll(preservedOverrides)
+            }
+            if (preservedReports.isNotEmpty()) {
+                newStore.hazardReportDao.upsertAll(preservedReports)
+            }
+            newStore.refreshOverrides()
+            newStore.refreshSections()
+            installer.discardSupersededBackup()
+
+            val profiles = ProfileStore(context)
+            profiles.knownCameraCount = count
+            ServiceController.reloadDatabase(context)
+
+            SyncResult(
+                outcome = SyncOutcome.UPDATED,
+                cameraCount = count,
+                message = "Встроенная база камер успешно восстановлена из APK ($count камер)",
+            )
+        } catch (e: Throwable) {
+            Log.e(TAG, "Validation of restored database failed", e)
+            installer.rollback()
+            SpeedCamApp.reloadCameraStore(context)
+            ServiceController.reloadDatabase(context)
+            SyncResult(
+                outcome = SyncOutcome.FAILED,
+                message = "Ошибка при валидации восстановленной базы: ${e.message}",
+            )
         }
     }
 
@@ -260,7 +319,47 @@ class DatabaseSyncEngine(
         private const val USER_AGENT = "SpeedCam-Android/1.0"
 
         const val DEFAULT_MANIFEST_URL =
-            "https://raw.githubusercontent.com/mishakorobov1950/speedcam/main/data/manifest.json"
+            "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/data/manifest.json"
+
+        /** Alternative mirror URLs for downloading the database manifest. */
+        val KNOWN_MIRRORS =
+            listOf(
+                DEFAULT_MANIFEST_URL,
+                "https://cdn.jsdelivr.net/gh/Mishakorobov/speedcam@main/data/manifest.json",
+            )
+
+        /**
+         * Formats network and I/O errors into user-friendly Russian messages.
+         */
+        fun formatErrorMessage(
+            e: Throwable,
+            url: String = "",
+        ): String =
+            when (e) {
+                is java.net.UnknownHostException ->
+                    "Не удалось подключиться к серверу: отсутствует подключение к интернету или сервер недоступен."
+                is java.net.SocketTimeoutException ->
+                    "Время ожидания ответа сервера истекло. Проверьте соединение или укажите другое зеркало."
+                is java.net.ConnectException ->
+                    "Не удалось установить сетевое соединение. Проверьте URL зеркала или доступ в интернет."
+                is SecurityException ->
+                    "Ошибка проверки целостности: ${e.message ?: "Контрольная сумма SHA-256 не совпадает."}"
+                is IOException -> {
+                    val msg = e.message ?: ""
+                    when {
+                        msg.contains("404") ->
+                            "Файл манифеста или базы не найден на сервере (HTTP 404). Проверьте URL зеркала или используйте локальный файл."
+                        msg.contains("403") ->
+                            "Доступ к серверу обновлений ограничен (HTTP 403). Попробуйте зеркало или локальный файл."
+                        msg.contains("500") || msg.contains("502") || msg.contains("503") ->
+                            "Сервер обновлений временно недоступен ($msg). Попробуйте позже или используйте альтернативное зеркало."
+                        else ->
+                            "Сетевая ошибка при загрузке: $msg"
+                    }
+                }
+                else ->
+                    "Ошибка при обновлении: ${e.localizedMessage ?: e.message ?: "Неизвестная ошибка"}"
+            }
 
         /** Parses a manifest JSON string into [DatabaseManifest]. */
         fun parseManifestJson(jsonString: String): DatabaseManifest {

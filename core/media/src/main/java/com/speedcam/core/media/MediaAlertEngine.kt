@@ -36,6 +36,7 @@ class MediaAlertEngine(
     private val bank = SoundBank()
     private val vibration = VibrationEngine(applicationContext)
     private val scoController = BluetoothScoController(applicationContext, audioManager)
+    val voiceCoordinator = VoiceAlertCoordinator(applicationContext)
 
     private var focusRequest: AudioFocusRequest? = null
     private var cadence: AlertCadenceState = AlertCadence.initial()
@@ -71,6 +72,7 @@ class MediaAlertEngine(
     fun setOutputMode(mode: OutputMode) {
         if (mode == this.mode && bank.isLoadedOrEmpty) return
         this.mode = mode
+        voiceCoordinator.setOutputMode(mode)
         // A route that cannot be set up must not take the alert pipeline down with it.
         runCatching { bank.load(applicationContext, mode) }
             .onFailure { Log.w(TAG, "Could not load the sound bank: ${it.message}") }
@@ -155,6 +157,7 @@ class MediaAlertEngine(
         if (outcome.speech) {
             val plan = SpeechPlanner.plan(decision, hazard)
             Log.i(TAG, "Speech planned: ${plan.phrases.joinToString { it.name }}")
+            voiceCoordinator.speakHazard(decision, hazard)
         }
 
         if (outcome.vibro) {
@@ -190,6 +193,7 @@ class MediaAlertEngine(
                 "Section speech planned: ${plan.phrases.joinToString { it.name }} " +
                     "(limit=${plan.limitKmh}, avg=${plan.achievedAverageKmh})",
             )
+            voiceCoordinator.speakSectionEvent(event)
         }
         if (profile.beepEnabled && mode.allowsTones) {
             gager.play(0.0, mode)
@@ -213,6 +217,7 @@ class MediaAlertEngine(
     }
 
     fun release() {
+        voiceCoordinator.release()
         scoController.forceStop()
         gager.release()
         bank.release()

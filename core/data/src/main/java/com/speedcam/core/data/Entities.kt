@@ -125,6 +125,15 @@ enum class HazardReportType {
 
     /** False alarm / warning in the wrong direction or inapplicable. */
     FALSE_POSITIVE,
+
+    /** Temporary police ambush or traffic police patrol (Засада ДПС). */
+    DPS_PATROL,
+
+    /** Temporary mobile tripod radar (Мобильная засада / тренога). */
+    MOBILE_TRIPOD,
+
+    /** Road accident or collision (Авария / ДТП). */
+    ROAD_ACCIDENT,
     ;
 
     companion object {

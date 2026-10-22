@@ -44,4 +44,9 @@ keystore.properties
 # of this repository shipped without it.
 #
 # This entry is only ever meant to exclude the generated database directory at the project root.
-/data/
+/data/*
+!/data/manifest.json
+
+# OpenCode
+node_modules/
+/.opencode/node_modules/

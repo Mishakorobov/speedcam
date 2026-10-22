@@ -51,6 +51,9 @@ enum class Phrase {
     RED_LIGHT_CAMERA,
     MOBILE_CAMERA,
     COMPLEX_CAMERA,
+    BUS_LANE_CAMERA,
+    ROAD_MARKING_CAMERA,
+    DUMMY_CAMERA,
 
     // --- limit and excess -----------------------------------------------------
     SPEED_LIMIT,

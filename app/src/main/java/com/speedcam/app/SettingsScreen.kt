@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,8 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,9 +23,13 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PictureInPicture
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Vibration
@@ -40,24 +44,32 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.speedcam.app.sync.DatabaseSyncEngine
 import com.speedcam.app.ui.components.SettingsSectionCard
 import com.speedcam.app.ui.components.SettingsSliderItem
 import com.speedcam.app.ui.components.SettingsToggleItem
 import com.speedcam.app.ui.components.SliderItemState
 import com.speedcam.app.ui.theme.SpeedDanger
 import com.speedcam.app.ui.theme.SpeedWarning
+import com.speedcam.app.util.toRussianTitle
 import com.speedcam.core.detect.QuickSetting
 import com.speedcam.core.detect.TransportProfile
 import com.speedcam.core.media.OutputMode
+import com.speedcam.core.media.VoiceEngine
+import com.speedcam.core.media.VoicePhraseStyle
+import java.util.Locale
 
 /**
  * Everything the settings screen reads.
@@ -103,6 +115,16 @@ data class SettingsState(
     val wearHapticProfile: String = "MOTORCYCLE_HIGH",
     val connectedWatchCount: Int = 0,
     val connectedWatchName: String = "",
+    val updateUrl: String = "",
+    val offlineTilesEnabled: Boolean = true,
+    val activeMbTilesName: String? = null,
+    val tileCacheStats: String = "",
+    val voiceEngine: VoiceEngine = VoiceEngine.TTS,
+    val voicePhraseStyle: VoicePhraseStyle = VoicePhraseStyle.FULL,
+    val ttsSpeechRate: Float = 1.0f,
+    val activeVoicePackId: String? = null,
+    val activeVoicePackName: String? = null,
+    val installedVoicePacks: List<Pair<String, String>> = emptyList(),
 )
 
 /** The settings screen's writes, bundled for reviewability. */
@@ -117,8 +139,17 @@ data class SettingsActions(
     val onResetHudPosition: () -> Unit = {},
     val onOutputModeChange: (OutputMode) -> Unit = {},
     val onSilentDuringCallChange: (Boolean) -> Unit = {},
+    val onVoiceEngineChange: (VoiceEngine) -> Unit = {},
+    val onVoicePhraseStyleChange: (VoicePhraseStyle) -> Unit = {},
+    val onTtsSpeechRateChange: (Float) -> Unit = {},
+    val onSelectVoicePack: (String) -> Unit = {},
+    val onImportVoicePack: () -> Unit = {},
+    val onTestVoice: () -> Unit = {},
     val onAutoUpdateChange: (Boolean) -> Unit = {},
     val onCheckForUpdates: () -> Unit = {},
+    val onImportDatabaseFile: () -> Unit = {},
+    val onRestoreBundledDatabase: () -> Unit = {},
+    val onUpdateUrlChange: (String) -> Unit = {},
     val onSyncHazardOutbox: () -> Unit = {},
     val onClearSyncedReports: () -> Unit = {},
     val onContraCamDbChange: (Boolean) -> Unit = {},
@@ -134,6 +165,10 @@ data class SettingsActions(
     val onWearCompanionEnabledChange: (Boolean) -> Unit = {},
     val onWearHapticProfileChange: (String) -> Unit = {},
     val onTestWearVibration: () -> Unit = {},
+    val onOfflineTilesEnabledChange: (Boolean) -> Unit = {},
+    val onImportMbTilesFile: () -> Unit = {},
+    val onClearMapCache: () -> Unit = {},
+    val onDisconnectMbTiles: () -> Unit = {},
 )
 
 /**
@@ -163,6 +198,7 @@ fun SettingsScreen(
         HudSectionCard(state = state, actions = actions)
         PipSectionCard(state = state, actions = actions)
         DatabaseSyncSectionCard(state = state, actions = actions)
+        OfflineMapSectionCard(state = state, actions = actions)
         ContraCamSectionCard(state = state, actions = actions)
         HazardOutboxSectionCard(state = state, actions = actions)
         AttributionSectionCard(dataSourceNote = state.dataSourceNote)
@@ -176,39 +212,43 @@ private fun DetectionSectionCard(
     actions: SettingsActions,
 ) {
     SettingsSectionCard(
-        title = "Radar Detection & Vehicle",
+        title = "Радар-детектор и транспорт",
         icon = Icons.Default.Speed,
     ) {
         SettingsToggleItem(
-            title = "Radar Detection",
-            subtitle = "Continuously scan for speed cameras and hazards via GPS",
+            title = "Радар-детектор",
+            subtitle = "Непрерывное отслеживание дорожных камер и опасностей по GPS",
             checked = state.enabled,
             onCheckedChange = actions.onEnabledChange,
         )
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-        Text("Detection Profile", style = MaterialTheme.typography.titleSmall)
+        Text("Профиль оповещений", style = MaterialTheme.typography.titleSmall)
         PresetSelector(state.quickSetting, actions.onQuickSettingChange)
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-        Text("Vehicle Type", style = MaterialTheme.typography.titleSmall)
+        Text("Тип транспорта", style = MaterialTheme.typography.titleSmall)
         TransportSelector(state.transport, actions.onTransportChange)
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
         val distanceLabel =
-            if (state.captureDistanceKm <= 0.0) "Auto" else "%.2f km".format(state.captureDistanceKm)
+            if (state.captureDistanceKm <= 0.0) "Авто" else "%.2f км".format(state.captureDistanceKm)
         SettingsSliderItem(
             item =
                 SliderItemState(
-                    title = "Warning Distance",
+                    title = "Дистанция предупреждения",
                     valueLabel = distanceLabel,
                     value = state.captureDistanceKm.toFloat(),
                     valueRange = 0f..3f,
+                    formatValueLabel = { v ->
+                        if (v <= 0.05f) "Авто" else "%.2f км".format(v)
+                    },
                 ),
-            onValueChange = { actions.onCaptureDistanceChange(it.toDouble()) },
+            onValueChange = {},
+            onValueChangeFinished = { actions.onCaptureDistanceChange(it.toDouble()) },
         )
     }
 }
@@ -219,23 +259,94 @@ private fun AudioSectionCard(
     actions: SettingsActions,
 ) {
     SettingsSectionCard(
-        title = "Audio & Alert Behavior",
+        title = "Звук и голосовые оповещения",
         icon = Icons.AutoMirrored.Filled.VolumeUp,
     ) {
         SettingsToggleItem(
-            title = "Silent During Calls",
-            subtitle = "Suppress voice and beeping alerts when phone call is in progress",
+            title = "Тишина во время звонка",
+            subtitle = "Отключать голосовые и звуковые предупреждения во время телефонного разговора",
             checked = state.silentDuringCall,
             onCheckedChange = actions.onSilentDuringCallChange,
         )
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-        Text("Audio Output Channel", style = MaterialTheme.typography.titleSmall)
+        Text("Движок голосовых оповещений", style = MaterialTheme.typography.titleSmall)
         Text(
             text =
-                "Choose where alerts are played. Bluetooth HFP interrupts car radio " +
-                    "like an incoming phone call.",
+                "Синтезатор речи (TTS) озвучивает любые типы фиксации («Контроль полосы ОТ», «Контроль светофора», «Разметка»). " +
+                    "Аудио-пакеты воспроизводят записанные фразы с авто-переключением на TTS для отсутствующих записей.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        VoiceEngineSelector(
+            selected = state.voiceEngine,
+            onChange = actions.onVoiceEngineChange,
+        )
+
+        if (state.voiceEngine != VoiceEngine.DISABLED) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            Text("Стиль предупреждений", style = MaterialTheme.typography.titleSmall)
+            VoicePhraseStyleSelector(
+                selected = state.voicePhraseStyle,
+                onChange = actions.onVoicePhraseStyleChange,
+            )
+            val exampleText =
+                if (state.voicePhraseStyle == VoicePhraseStyle.FULL) {
+                    "«Внимание! Через 300 метров контроль светофора. Ограничение 60 километров в час»"
+                } else {
+                    "«Светофор 60, через 300 метров»"
+                }
+            Text(
+                text = "Пример: $exampleText",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            SettingsSliderItem(
+                item =
+                    SliderItemState(
+                        title = "Скорость речи TTS",
+                        valueLabel = String.format(Locale.US, "%.2fx", state.ttsSpeechRate),
+                        value = state.ttsSpeechRate,
+                        valueRange = 0.8f..1.5f,
+                        formatValueLabel = { String.format(Locale.US, "%.2fx", it) },
+                    ),
+                onValueChange = actions.onTtsSpeechRateChange,
+                onValueChangeFinished = actions.onTtsSpeechRateChange,
+            )
+
+            if (state.voiceEngine == VoiceEngine.AUDIO_PACK) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                VoicePackStatusSurface(state = state, actions = actions)
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            OutlinedButton(
+                onClick = actions.onTestVoice,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Проверить голос (Тест)")
+            }
+        }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+        Text("Канал вывода звука", style = MaterialTheme.typography.titleSmall)
+        Text(
+            text =
+                "Выберите источник воспроизведения звука. Bluetooth HFP прерывает радио магнитолы " +
+                    "как входящий телефонный звонок.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -246,24 +357,126 @@ private fun AudioSectionCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun VoiceEngineSelector(
+    selected: VoiceEngine,
+    onChange: (VoiceEngine) -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        VoiceEngine.entries.forEach { engine ->
+            FilterChip(
+                selected = engine == selected,
+                onClick = { onChange(engine) },
+                label = { Text(engine.toRussianTitle()) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun VoicePhraseStyleSelector(
+    selected: VoicePhraseStyle,
+    onChange: (VoicePhraseStyle) -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        VoicePhraseStyle.entries.forEach { style ->
+            FilterChip(
+                selected = style == selected,
+                onClick = { onChange(style) },
+                label = { Text(style.toRussianTitle()) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun VoicePackStatusSurface(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = "Локальные аудио-пакеты",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            val currentPackText = state.activeVoicePackName ?: "Пакет не выбран (активен fallback на TTS)"
+            Text(
+                text = "Текущий пакет: $currentPackText",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            if (state.installedVoicePacks.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    state.installedVoicePacks.forEach { (id, name) ->
+                        FilterChip(
+                            selected = id == state.activeVoicePackId,
+                            onClick = { actions.onSelectVoicePack(id) },
+                            label = { Text(name) },
+                        )
+                    }
+                }
+            }
+
+            OutlinedButton(
+                onClick = actions.onImportVoicePack,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FileOpen,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Импорт голосового архива (.zip)")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AudioOutputSelector(
     selected: OutputMode,
     onChange: (OutputMode) -> Unit,
 ) {
-    val modes =
+    val driverModes =
         listOf(
-            OutputMode.STANDARD to "Auto / Media",
-            OutputMode.ALWAYS_SPEAKER to "Speaker",
-            OutputMode.BLUETOOTH_MULTIMEDIA to "BT Media",
-            OutputMode.BLUETOOTH_HFP to "BT Hands-Free (HFP)",
+            OutputMode.STANDARD,
+            OutputMode.ALWAYS_SPEAKER,
+            OutputMode.BLUETOOTH_MULTIMEDIA,
+            OutputMode.BLUETOOTH_HFP,
         )
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(modes) { (mode, label) ->
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        driverModes.forEach { mode ->
             FilterChip(
                 selected = mode == selected,
                 onClick = { onChange(mode) },
-                label = { Text(label) },
+                label = { Text(mode.toRussianTitle()) },
             )
         }
     }
@@ -275,19 +488,19 @@ private fun BluetoothAutomationSectionCard(
     actions: SettingsActions,
 ) {
     SettingsSectionCard(
-        title = "Car Bluetooth Automation",
+        title = "Автоматизация Bluetooth",
         icon = Icons.Default.DirectionsCar,
     ) {
         SettingsToggleItem(
-            title = "Auto-Start on Car Bluetooth",
-            subtitle = "Automatically start detection and HUD when car Bluetooth connects",
+            title = "Автостарт при подключении к авто",
+            subtitle = "Автоматически запускать радар-детектор и HUD при подключении к автомобилю",
             checked = state.autoStartOnBluetooth,
             onCheckedChange = actions.onAutoStartOnBluetoothChange,
         )
 
         SettingsToggleItem(
-            title = "Auto-Stop on Disconnect",
-            subtitle = "Automatically stop detection and hide HUD when car Bluetooth disconnects",
+            title = "Автостоп при отключении",
+            subtitle = "Останавливать работу и скрывать HUD при отключении Bluetooth автомобиля",
             checked = state.autoStopOnBluetooth,
             onCheckedChange = actions.onAutoStopOnBluetoothChange,
         )
@@ -309,21 +522,25 @@ private fun BluetoothAutomationSectionCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BluetoothGracePeriodSelector(
     selectedSeconds: Int,
     onChange: (Int) -> Unit,
 ) {
-    Text("Disconnection Grace Period", style = MaterialTheme.typography.titleSmall)
+    Text("Задержка остановки при отключении", style = MaterialTheme.typography.titleSmall)
     Text(
-        text = "Delay before stopping detection to prevent restarts during engine cranking or brief drops.",
+        text = "Таймаут ожидания перед остановкой радара для защиты от перезапусков при пуске двигателя.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     val delayOptions = listOf(0, 10, 20, 30, 60)
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(delayOptions) { seconds ->
-            val label = if (seconds == 0) "Immediate (0s)" else "${seconds}s"
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        delayOptions.forEach { seconds ->
+            val label = if (seconds == 0) "Сразу (0с)" else "$seconds с"
             FilterChip(
                 selected = selectedSeconds == seconds,
                 onClick = { onChange(seconds) },
@@ -333,28 +550,30 @@ private fun BluetoothGracePeriodSelector(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun BluetoothDeviceSelector(
     currentFilter: String,
     pairedDevices: List<Pair<String, String>>,
     onChange: (address: String, name: String) -> Unit,
 ) {
-    Text("Target Bluetooth Device", style = MaterialTheme.typography.titleSmall)
+    Text("Выбор Bluetooth-устройства автомобиля", style = MaterialTheme.typography.titleSmall)
     Text(
-        text = "Choose which car stereo or handsfree unit triggers auto-start and stop.",
+        text = "Укажите магнитолу или гарнитуру автомобиля для триггера автозапуска.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            FilterChip(
-                selected = currentFilter.isBlank(),
-                onClick = { onChange("", "") },
-                label = { Text("Any Car Audio (Default)") },
-            )
-        }
-        items(pairedDevices) { (address, name) ->
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        FilterChip(
+            selected = currentFilter.isBlank(),
+            onClick = { onChange("", "") },
+            label = { Text("Любая автомагнитола (по умолчанию)") },
+        )
+        pairedDevices.forEach { (address, name) ->
             FilterChip(
                 selected = currentFilter.equals(address, ignoreCase = true),
                 onClick = { onChange(address, name) },
@@ -370,19 +589,19 @@ private fun AutomotiveIntegrationSectionCard(
     actions: SettingsActions,
 ) {
     SettingsSectionCard(
-        title = "Car Head Unit & Android Auto",
+        title = "Автомагнитолы и Android Auto",
         icon = Icons.Default.DirectionsCar,
     ) {
         SettingsToggleItem(
-            title = "Head Unit Launcher Broadcasts",
-            subtitle = "Send speed and camera alerts to FCC, Agama, CarWebGuru and car launchers",
+            title = "Интеграция с авто-лаунчерами",
+            subtitle = "Передавать текущую скорость и предупреждения в лаунчеры FCC, Agama, CarWebGuru и др.",
             checked = state.launcherBroadcastEnabled,
             onCheckedChange = actions.onLauncherBroadcastEnabledChange,
         )
 
         SettingsToggleItem(
-            title = "Head Unit ACC Auto-Start",
-            subtitle = "Start radar when car powers on (ACC ON / Boot) and pause on sleep (ACC OFF)",
+            title = "Автозапуск по питанию (ACC)",
+            subtitle = "Запуск при включении зажигания (ACC ON) и пауза при выключении (ACC OFF)",
             checked = state.headUnitAutoStart,
             onCheckedChange = actions.onHeadUnitAutoStartChange,
         )
@@ -395,12 +614,12 @@ private fun WearCompanionSectionCard(
     actions: SettingsActions,
 ) {
     SettingsSectionCard(
-        title = "Wear OS Watch & Motorcycle Haptics",
+        title = "Часы Wear OS и тактильные вибросигналы",
         icon = Icons.Default.Watch,
     ) {
         SettingsToggleItem(
-            title = "Wear OS Companion Sync",
-            subtitle = "Send real-time speed alerts and haptic vibrations to your smartwatch",
+            title = "Синхронизация с Wear OS",
+            subtitle = "Отправка скорости и тактильных вибросигналов на смарт-часы",
             checked = state.wearCompanionEnabled,
             onCheckedChange = actions.onWearCompanionEnabledChange,
         )
@@ -412,9 +631,9 @@ private fun WearCompanionSectionCard(
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-        Text("Motorcycle Haptic Profile (Wrist Vibration)", style = MaterialTheme.typography.titleSmall)
+        Text("Тактильный профиль вибрации (Мотоцикл)", style = MaterialTheme.typography.titleSmall)
         Text(
-            text = "High-amplitude vibration waveforms designed to cut through thick motorcycle gloves.",
+            text = "Усиленные паттерны вибрации, ощутимые даже в плотных мотоперчатках.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -434,7 +653,7 @@ private fun WearCompanionSectionCard(
                 modifier = Modifier.size(18.dp),
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Test Vibration on Watch")
+            Text("Тест вибрации на часах")
         }
     }
 }
@@ -463,9 +682,9 @@ private fun WearWatchStatusRow(
             )
             val label =
                 if (count > 0) {
-                    "Connected: $name ($count watch${if (count > 1) "es" else ""})"
+                    "Подключено: $name (часов: $count)"
                 } else {
-                    "No Wear OS watch connected (or searching)"
+                    "Часы Wear OS не подключены (или поиск)"
                 }
             Text(
                 text = label,
@@ -476,6 +695,7 @@ private fun WearWatchStatusRow(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WearHapticProfileSelector(
     selectedProfile: String,
@@ -483,13 +703,16 @@ private fun WearHapticProfileSelector(
 ) {
     val profiles =
         listOf(
-            "MOTORCYCLE_HIGH" to "Moto High",
-            "STANDARD" to "Standard",
-            "OVERLIMIT_ONLY" to "Overlimit Only",
-            "SILENT" to "Silent",
+            "MOTORCYCLE_HIGH" to "Мото (Макс)",
+            "STANDARD" to "Стандартный",
+            "OVERLIMIT_ONLY" to "Только при превышении",
+            "SILENT" to "Без вибрации",
         )
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(profiles) { (key, label) ->
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        profiles.forEach { (key, label) ->
             FilterChip(
                 selected = selectedProfile == key,
                 onClick = { onChange(key) },
@@ -505,19 +728,19 @@ private fun HudSectionCard(
     actions: SettingsActions,
 ) {
     SettingsSectionCard(
-        title = "Floating HUD (Overlay)",
+        title = "Плавающий HUD (Виджет поверх окон)",
         icon = Icons.Default.Layers,
     ) {
         SettingsToggleItem(
-            title = "Show Over Other Apps",
-            subtitle = "Displays floating speedometer and radar warnings over navigation apps",
+            title = "Поверх других приложений",
+            subtitle = "Отображать плавающий спидометр и камеры поверх навигационных приложений",
             checked = state.hudEnabled,
             onCheckedChange = actions.onHudEnabledChange,
         )
 
         SettingsToggleItem(
-            title = "Dim on Clear Road",
-            subtitle = "Reduces HUD opacity when no hazards or cameras are nearby",
+            title = "Снижать яркость на чистой дороге",
+            subtitle = "Уменьшать прозрачность виджета при отсутствии опасностей и камер",
             checked = state.hudAutoHide,
             onCheckedChange = actions.onHudAutoHideChange,
         )
@@ -531,7 +754,7 @@ private fun HudSectionCard(
             onClick = actions.onResetHudPosition,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Reset HUD Window Position")
+            Text("Сбросить позицию окна HUD")
         }
     }
 }
@@ -542,20 +765,20 @@ private fun PipSectionCard(
     actions: SettingsActions,
 ) {
     SettingsSectionCard(
-        title = "Picture-in-Picture (PiP)",
+        title = "Режим «Картинка в картинке» (PiP)",
         icon = Icons.Default.PictureInPicture,
     ) {
         SettingsToggleItem(
-            title = "Picture-in-Picture Speedometer",
-            subtitle = "Floating speedometer window while using other navigation apps",
+            title = "Спидометр «Картинка в картинке»",
+            subtitle = "Компактное системное окно со спидометром во время использования других навигационных приложений",
             checked = state.pipEnabled,
             onCheckedChange = actions.onPipEnabledChange,
         )
 
         if (state.pipEnabled) {
             SettingsToggleItem(
-                title = "Auto-Enter on App Exit",
-                subtitle = "Switch to PiP automatically when returning Home during active detection",
+                title = "Автопереход в PiP при сворачивании",
+                subtitle = "Автоматически открывать компактный спидометр при возврате на главный экран",
                 checked = state.pipAutoEnter,
                 onCheckedChange = actions.onPipAutoEnterChange,
             )
@@ -569,14 +792,14 @@ private fun DatabaseSyncSectionCard(
     actions: SettingsActions,
 ) {
     SettingsSectionCard(
-        title = "Camera Database & Sync",
+        title = "База данных камер и обновление",
         icon = Icons.Default.Storage,
     ) {
         DatabaseStatusSurface(state = state)
 
         SettingsToggleItem(
-            title = "Weekly Auto-Update",
-            subtitle = "Automatically download fresh camera databases over Wi-Fi",
+            title = "Еженедельное автообновление",
+            subtitle = "Автоматически загружать свежую базу камер по Wi-Fi",
             checked = state.autoUpdateEnabled,
             onCheckedChange = actions.onAutoUpdateChange,
         )
@@ -593,9 +816,84 @@ private fun DatabaseSyncSectionCard(
                     strokeWidth = 2.dp,
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Checking for updates...")
+                Text("Проверка обновлений...")
             } else {
-                Text("Check for Database Updates Now")
+                Text("Проверить обновления онлайн")
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = actions.onImportDatabaseFile,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FileOpen,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Импорт файла")
+            }
+
+            OutlinedButton(
+                onClick = actions.onRestoreBundledDatabase,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Restore,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Сброс к APK")
+            }
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = "Зеркало обновлений (URL манифеста)",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            OutlinedTextField(
+                value = state.updateUrl,
+                onValueChange = actions.onUpdateUrlChange,
+                placeholder = { Text(DatabaseSyncEngine.DEFAULT_MANIFEST_URL, maxLines = 1) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = MaterialTheme.typography.bodySmall,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    selected = state.updateUrl.isBlank() || state.updateUrl == DatabaseSyncEngine.DEFAULT_MANIFEST_URL,
+                    onClick = { actions.onUpdateUrlChange(DatabaseSyncEngine.DEFAULT_MANIFEST_URL) },
+                    label = { Text("GitHub") },
+                )
+                FilterChip(
+                    selected = state.updateUrl == DatabaseSyncEngine.KNOWN_MIRRORS.getOrNull(1),
+                    onClick = {
+                        DatabaseSyncEngine.KNOWN_MIRRORS.getOrNull(1)?.let(actions.onUpdateUrlChange)
+                    },
+                    label = { Text("jsDelivr CDN") },
+                )
+                if (state.updateUrl.isNotBlank() && state.updateUrl != DatabaseSyncEngine.DEFAULT_MANIFEST_URL) {
+                    TextButton(onClick = { actions.onUpdateUrlChange("") }) {
+                        Text("Сброс", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
             }
         }
     }
@@ -605,9 +903,9 @@ private fun DatabaseSyncSectionCard(
 private fun DatabaseStatusSurface(state: SettingsState) {
     val countsText =
         if (state.sectionCount > 0) {
-            "${state.cameraCount} speed cameras, ${state.sectionCount} SPECS corridors loaded"
+            "Загружено: ${state.cameraCount} камер, ${state.sectionCount} участков КСС"
         } else {
-            "${state.cameraCount} speed cameras loaded"
+            "Загружено: ${state.cameraCount} камер"
         }
 
     Surface(
@@ -623,7 +921,7 @@ private fun DatabaseStatusSurface(state: SettingsState) {
             )
             state.databaseBuiltAt?.takeIf { it.isNotBlank() }?.let { builtAt ->
                 Text(
-                    text = "Database build: ${builtAt.take(10)}",
+                    text = "Сборка базы: ${builtAt.take(10)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -631,18 +929,117 @@ private fun DatabaseStatusSurface(state: SettingsState) {
             state.lastUpdateCheckAt?.takeIf { it.isNotBlank() }?.let { checkedAt ->
                 val checkLabel = checkedAt.take(16).replace("T", " ")
                 Text(
-                    text = "Last checked: $checkLabel",
+                    text = "Последняя проверка: $checkLabel",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             state.lastUpdateStatus?.takeIf { it.isNotBlank() }?.let { status ->
                 Text(
-                    text = "Status: $status",
+                    text = "Статус: $status",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun OfflineMapSectionCard(
+    state: SettingsState,
+    actions: SettingsActions,
+) {
+    SettingsSectionCard(
+        title = "Оффлайн-картография (MBTiles и кэш)",
+        icon = Icons.Default.Map,
+    ) {
+        SettingsToggleItem(
+            title = "Оффлайн-подложка карты",
+            subtitle = "Отображать векторные/растровые тайлы без задержек и без интернета",
+            checked = state.offlineTilesEnabled,
+            onCheckedChange = actions.onOfflineTilesEnabledChange,
+        )
+
+        OfflineMapStatusSurface(state)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = actions.onImportMbTilesFile,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FileOpen,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Импорт MBTiles")
+            }
+
+            OutlinedButton(
+                onClick = actions.onClearMapCache,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Restore,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Очистить кэш")
+            }
+        }
+
+        if (state.activeMbTilesName != null) {
+            OutlinedButton(
+                onClick = actions.onDisconnectMbTiles,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Отключить MBTiles (${state.activeMbTilesName})")
+            }
+        }
+    }
+}
+
+@Composable
+private fun OfflineMapStatusSurface(state: SettingsState) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            val mbTilesTitle =
+                if (state.activeMbTilesName != null) {
+                    "MBTiles: ${state.activeMbTilesName}"
+                } else {
+                    "Архив MBTiles: не подключен (активен кэш)"
+                }
+            Text(
+                text = mbTilesTitle,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            val cacheText =
+                if (state.tileCacheStats.isNotBlank()) {
+                    state.tileCacheStats
+                } else {
+                    "0.0 МБ (0 тайлов)"
+                }
+            Text(
+                text = "Локальный кэш тайлов: $cacheText",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "Автономность: 100% готовность в тоннелях и на трассах без сети",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -653,12 +1050,12 @@ private fun ContraCamSectionCard(
     actions: SettingsActions,
 ) {
     SettingsSectionCard(
-        title = "ContraCam Database (Binary Archive)",
+        title = "База ContraCam (Бинарный архив)",
         icon = Icons.Default.CloudDownload,
     ) {
         SettingsToggleItem(
-            title = "Use ContraCam Binary Archive",
-            subtitle = "Download and use proprietary ContraCam map.dat archives instead of OSM/SpeedCam",
+            title = "Использовать базу ContraCam",
+            subtitle = "Фирменный бинарный архив камер вместо OSM/SpeedCam (авто-fallback на OSM при отсутствии архива)",
             checked = state.useContraCamDb,
             onCheckedChange = actions.onContraCamDbChange,
         )
@@ -677,13 +1074,13 @@ private fun ContraCamSectionCard(
                     strokeWidth = 2.dp,
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Downloading & Parsing Archive...")
+                Text("Загрузка и парсинг архива...")
             } else {
                 Text(
                     if (state.contraCamCameraCount > 0) {
-                        "Update ContraCam Archive (HTTP)"
+                        "Обновить архив ContraCam (${state.contraCamCameraCount} камер)"
                     } else {
-                        "Download ContraCam Archive (HTTP)"
+                        "Загрузить архив ContraCam (HTTP)"
                     },
                 )
             }
@@ -701,9 +1098,9 @@ private fun ContraCamStatusSurface(state: SettingsState) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             val statusText =
                 if (state.contraCamCameraCount > 0) {
-                    "${state.contraCamCameraCount} ContraCam cameras installed"
+                    "Установлено ${state.contraCamCameraCount} камер ContraCam"
                 } else {
-                    "Archive not installed yet"
+                    "Архив еще не скачан (активен fallback на OSM)"
                 }
             Text(
                 text = statusText,
@@ -712,9 +1109,9 @@ private fun ContraCamStatusSurface(state: SettingsState) {
             )
             val modeText =
                 if (state.useContraCamDb) {
-                    "Active detection source: ContraCam"
+                    "Активный источник камер: ContraCam"
                 } else {
-                    "Active detection source: Standard (OSM + SpeedCam)"
+                    "Активный источник камер: Стандартный (OSM + SpeedCam)"
                 }
             Text(
                 text = modeText,
@@ -729,14 +1126,14 @@ private fun ContraCamStatusSurface(state: SettingsState) {
             state.lastContraCamSyncAt?.takeIf { it.isNotBlank() }?.let { syncAt ->
                 val label = syncAt.take(16).replace("T", " ")
                 Text(
-                    text = "Last updated: $label",
+                    text = "Последнее обновление: $label",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             state.lastContraCamStatus?.takeIf { it.isNotBlank() }?.let { status ->
                 Text(
-                    text = "Status: $status",
+                    text = "Статус: $status",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -751,13 +1148,13 @@ private fun HazardOutboxSectionCard(
     actions: SettingsActions,
 ) {
     SettingsSectionCard(
-        title = "Crowdsourced Hazard Outbox",
+        title = "Очередь сообщений о дорожных событиях",
         icon = Icons.Default.CloudSync,
     ) {
         Text(
             text =
-                "Offline-first hazard queue. Reports submitted while driving are stored locally " +
-                    "and synced when an internet connection becomes available.",
+                "Офлайн-очередь отметок. Отметки о камерах и опасностях сохраняются локально " +
+                    "и отправляются в сеть при появлении подключения.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -780,9 +1177,9 @@ private fun HazardOutboxSectionCard(
                         strokeWidth = 2.dp,
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Syncing...")
+                    Text("Отправка...")
                 } else {
-                    Text("Sync Outbox")
+                    Text("Отправить отметки")
                 }
             }
 
@@ -790,7 +1187,7 @@ private fun HazardOutboxSectionCard(
                 onClick = actions.onClearSyncedReports,
                 modifier = Modifier.weight(1f),
             ) {
-                Text("Clear Synced")
+                Text("Очистить отправленные")
             }
         }
     }
@@ -810,7 +1207,7 @@ private fun HazardStatusSurface(state: SettingsState) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Pending in outbox:",
+                    text = "Ожидают отправки:",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Surface(
@@ -823,7 +1220,7 @@ private fun HazardStatusSurface(state: SettingsState) {
                         },
                 ) {
                     Text(
-                        text = "${state.pendingReportCount} report(s)",
+                        text = "${state.pendingReportCount} отм.",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color =
@@ -839,7 +1236,7 @@ private fun HazardStatusSurface(state: SettingsState) {
 
             state.lastHazardSyncAt?.takeIf { it.isNotBlank() }?.let { syncAt ->
                 Text(
-                    text = "Last synced: ${syncAt.take(16).replace("T", " ")}",
+                    text = "Синхронизировано: ${syncAt.take(16).replace("T", " ")}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -851,9 +1248,29 @@ private fun HazardStatusSurface(state: SettingsState) {
 @Composable
 private fun AttributionSectionCard(dataSourceNote: String) {
     SettingsSectionCard(
-        title = "Attribution & Legal",
+        title = "О программе SpeedCam и правовая информация",
         icon = Icons.Default.Info,
     ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_speedcam_lockup),
+                contentDescription = "SpeedCam Logo",
+                tint = Color.Unspecified,
+                modifier = Modifier.height(42.dp).fillMaxWidth(0.75f),
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "Автомобильный GPS радар-детектор и проекционный HUD • v0.1.0 (Релиз)",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
         Text(
             text = dataSourceNote,
             style = MaterialTheme.typography.bodyMedium,
@@ -861,41 +1278,49 @@ private fun AttributionSectionCard(dataSourceNote: String) {
         )
         Text(
             text =
-                "ContraCam clean-room engine. Data distributed under " +
-                    "the Open Database License (ODbL 1.0).",
+                "Совместимый движок ContraCam. Данные распространяются по лицензии " +
+                    "Open Database License (ODbL 1.0).",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PresetSelector(
     selected: QuickSetting,
     onChange: (QuickSetting) -> Unit,
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(QuickSetting.entries.toList()) { preset ->
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        QuickSetting.entries.forEach { preset ->
             FilterChip(
                 selected = preset == selected,
                 onClick = { onChange(preset) },
-                label = { Text(preset.displayName) },
+                label = { Text(preset.toRussianTitle()) },
             )
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TransportSelector(
     selected: TransportProfile,
     onChange: (TransportProfile) -> Unit,
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(TransportProfile.entries.toList()) { profile ->
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        TransportProfile.entries.forEach { profile ->
             FilterChip(
                 selected = profile == selected,
                 onClick = { onChange(profile) },
-                label = { Text(profile.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                label = { Text(profile.toRussianTitle()) },
             )
         }
     }
@@ -921,7 +1346,7 @@ private fun HudPermissionWarningCard(onRequestPermission: () -> Unit) {
                     modifier = Modifier.size(20.dp),
                 )
                 Text(
-                    text = "Overlay Permission Required",
+                    text = "Требуется разрешение поверх окон",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = SpeedDanger,
@@ -929,8 +1354,8 @@ private fun HudPermissionWarningCard(onRequestPermission: () -> Unit) {
             }
             Text(
                 text =
-                    "Android requires explicit permission to draw the floating HUD widget " +
-                        "over Google Maps or Yandex Navigator.",
+                    "Для отображения плавающего спидометра поверх Яндекс.Навигатора или карт " +
+                        "требуется предоставить системное разрешение.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface,
             )
@@ -941,7 +1366,7 @@ private fun HudPermissionWarningCard(onRequestPermission: () -> Unit) {
                         .buttonColors(containerColor = SpeedDanger),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Grant Overlay Permission")
+                Text("Предоставить разрешение")
             }
         }
     }

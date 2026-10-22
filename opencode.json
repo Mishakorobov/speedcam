@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "memory": {
+      "type": "local",
+      "enabled": true,
+      "command": ["npx.cmd", "-y", "@modelcontextprotocol/server-memory"]
+    },
+    "search": {
+      "type": "local",
+      "enabled": true,
+      "command": ["npx.cmd", "-y", "duckduckgo-mcp-server"]
+    }
+  }
+}

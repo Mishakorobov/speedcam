@@ -8,5 +8,5 @@ import androidx.car.app.Session
  * Android Auto session for SpeedCam Radar.
  */
 class SpeedCamCarSession : Session() {
-    override fun onCreateScreen(intent: Intent): Screen = SpeedCamDashboardCarScreen(carContext)
+    override fun onCreateScreen(intent: Intent): Screen = SpeedCamNavigationCarScreen(carContext)
 }

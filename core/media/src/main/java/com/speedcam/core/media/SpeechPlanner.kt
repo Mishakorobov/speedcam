@@ -115,6 +115,9 @@ object SpeechPlanner {
             CameraKind.RED_LIGHT -> Phrase.RED_LIGHT_CAMERA
             CameraKind.MOBILE -> Phrase.MOBILE_CAMERA
             CameraKind.COMPLEX -> Phrase.COMPLEX_CAMERA
+            CameraKind.BUS_LANE -> Phrase.BUS_LANE_CAMERA
+            CameraKind.ROAD_MARKING -> Phrase.ROAD_MARKING_CAMERA
+            CameraKind.DUMMY -> Phrase.DUMMY_CAMERA
             else -> Phrase.SPEED_CAMERA
         }
 }

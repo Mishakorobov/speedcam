@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextMeasurer
@@ -31,6 +32,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
 import com.speedcam.core.detect.Camera
 import com.speedcam.core.detect.CameraKind
@@ -43,6 +46,8 @@ import com.speedcam.service.HazardView
 import com.speedcam.service.SectionUiState
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -52,6 +57,7 @@ private data class RenderContext(
     val mapData: VectorMapData,
     val palette: MapPalette,
     val pulseProgress: Float,
+    val tileManager: OfflineTileManager?,
 )
 
 private data class RadarDistanceParams(
@@ -97,12 +103,16 @@ fun VectorMapCanvas(
     state: VectorMapState,
     detectionState: DetectionUiState,
     mapData: VectorMapData,
+    tileManager: OfflineTileManager? = null,
     modifier: Modifier = Modifier,
     onCameraClick: (Camera) -> Unit = {},
 ) {
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val pulseProgress by rememberPulseProgress()
+
+    // Trigger canvas recomposition when background tiles are loaded
+    val tileRevision = tileManager?.revision?.longValue ?: 0L
 
     val palette =
         remember(state.themeMode) {
@@ -127,7 +137,7 @@ fun VectorMapCanvas(
                 width = size.width.toDouble(),
                 height = size.height.toDouble(),
             )
-        val ctx = RenderContext(state, detectionState, mapData, palette, pulseProgress)
+        val ctx = RenderContext(state, detectionState, mapData, palette, pulseProgress, tileManager)
         renderMapLayers(ctx, viewport, textMeasurer)
     }
 }
@@ -138,7 +148,12 @@ private fun DrawScope.renderMapLayers(
     textMeasurer: TextMeasurer,
 ) {
     drawRect(color = ctx.palette.background)
-    drawSpatialGrid(viewport.width, viewport.height, ctx.palette)
+
+    if (ctx.state.showTiles && ctx.tileManager != null) {
+        drawTileLayer(ctx.tileManager, viewport, ctx.palette)
+    } else {
+        drawSpatialGrid(viewport.width, viewport.height, ctx.palette)
+    }
 
     val vehicleLat = ctx.detectionState.currentLat
     val vehicleLon = ctx.detectionState.currentLon
@@ -272,6 +287,66 @@ private fun findTappedCamera(
 }
 
 // --------------------------------------------------------------------- Canvas Draw Helpers
+
+private fun DrawScope.drawTileLayer(
+    tileManager: OfflineTileManager,
+    viewport: MapViewport,
+    palette: MapPalette,
+) {
+    val intZoom = viewport.zoom.toInt().coerceIn(0, 18)
+    val scaleFactor = 2.0.pow(viewport.zoom - intZoom)
+    val tileSizePx = MercatorProjection.TILE_SIZE * scaleFactor
+    val world = MercatorProjection.worldSize(viewport.zoom)
+    val cx = MercatorProjection.longitudeToX(viewport.center.lon) * world
+    val cy = MercatorProjection.latitudeToY(viewport.center.lat) * world
+
+    val tileRange = TileCoordinateUtils.getVisibleTileRange(viewport, marginFactor = 1.35)
+
+    withTransform({
+        if (viewport.bearingDeg != 0.0) {
+            rotate(
+                degrees = -viewport.bearingDeg.toFloat(),
+                pivot = Offset(viewport.width.toFloat() / 2f, viewport.height.toFloat() / 2f),
+            )
+        }
+    }) {
+        val destSize = tileSizePx.roundToInt()
+        for (x in tileRange.minX..tileRange.maxX) {
+            for (y in tileRange.minY..tileRange.maxY) {
+                val tileWorldX = x.toDouble() * tileSizePx
+                val tileWorldY = y.toDouble() * tileSizePx
+                val ux = (viewport.width / 2.0) + (tileWorldX - cx)
+                val uy = (viewport.height / 2.0) + (tileWorldY - cy)
+
+                val destLeft = ux.roundToInt()
+                val destTop = uy.roundToInt()
+
+                val bitmap = tileManager.getTileBitmap(intZoom, x, y)
+                if (bitmap != null) {
+                    drawImage(
+                        image = bitmap,
+                        dstOffset = IntOffset(destLeft, destTop),
+                        dstSize = IntSize(destSize, destSize),
+                    )
+                } else {
+                    val parentFallback = tileManager.getParentTileFallback(intZoom, x, y)
+                    if (parentFallback != null) {
+                        val (parentBitmap, quadX, quadY) = parentFallback
+                        val halfW = parentBitmap.width / 2
+                        val halfH = parentBitmap.height / 2
+                        drawImage(
+                            image = parentBitmap,
+                            srcOffset = IntOffset(quadX * halfW, quadY * halfH),
+                            srcSize = IntSize(halfW, halfH),
+                            dstOffset = IntOffset(destLeft, destTop),
+                            dstSize = IntSize(destSize, destSize),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 private fun DrawScope.drawSpatialGrid(
     width: Double,
@@ -669,7 +744,10 @@ private fun getCameraColor(kind: CameraKind): Color =
         CameraKind.COMPLEX -> Color(0xFF8B5CF6)
         CameraKind.MOBILE -> Color(0xFFEAB308)
         CameraKind.DUMMY -> Color(0xFF64748B)
+        CameraKind.BUS_LANE -> Color(0xFF10B981)
+        CameraKind.ROAD_MARKING -> Color(0xFFEC4899)
         CameraKind.UNKNOWN -> Color(0xFF3B82F6)
+        else -> Color(0xFF3B82F6)
     }
 
 // --------------------------------------------------------------------- Map Theme Palettes

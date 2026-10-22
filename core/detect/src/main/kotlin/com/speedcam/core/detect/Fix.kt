@@ -50,6 +50,12 @@ data class Fix(
 
         /** Beyond this the fix is noise, not a position. */
         const val MAX_USABLE_ACCURACY_M = 200f
+
+        /** Speed threshold in km/h below which vehicle is considered stationary. */
+        const val DEADBAND_SPEED_KMH = SpeedFilter.DEADBAND_SPEED_KMH
+
+        /** Speed threshold in m/s below which vehicle is considered stationary (2.0 km/h / 3.6 ≈ 0.5556 m/s). */
+        const val DEADBAND_SPEED_MS = SpeedFilter.DEADBAND_SPEED_MS
     }
 }
 

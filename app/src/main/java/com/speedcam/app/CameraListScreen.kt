@@ -58,6 +58,7 @@ import com.speedcam.app.ui.components.CompactSpeedLimitBadge
 import com.speedcam.app.ui.components.getCameraIcon
 import com.speedcam.app.ui.theme.BrandPrimaryDark
 import com.speedcam.app.ui.theme.SpeedDanger
+import com.speedcam.app.util.toRussianTitle
 import com.speedcam.core.data.HazardReportType
 import com.speedcam.core.detect.CameraKind
 
@@ -188,7 +189,7 @@ private fun CameraSearchField(
     OutlinedTextField(
         value = query,
         onValueChange = onQueryChange,
-        placeholder = { Text("Search by ID, operator, or road...") },
+        placeholder = { Text("Поиск по ID, модели или трассе...") },
         leadingIcon = {
             Icon(
                 imageVector = Icons.Default.Search,
@@ -201,7 +202,7 @@ private fun CameraSearchField(
                 IconButton(onClick = { onQueryChange("") }) {
                     Icon(
                         imageVector = Icons.Default.Clear,
-                        contentDescription = "Clear search",
+                        contentDescription = "Очистить поиск",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -239,13 +240,13 @@ private fun CameraSummaryBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "Showing $filteredCount of $totalCount cameras",
+            text = "Показано $filteredCount из $totalCount камер",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (filterActive) {
             Text(
-                text = "Reset filters",
+                text = "Сбросить фильтры",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
@@ -480,7 +481,7 @@ private fun KindFilterRow(
             FilterChip(
                 selected = isSelected,
                 onClick = { onChange(selected.toggle(kind)) },
-                label = { Text(kind.name.lowercase().replace('_', ' ')) },
+                label = { Text(kind.toRussianTitle()) },
                 colors = FilterChipDefaults.filterChipColors(),
             )
         }
@@ -506,21 +507,21 @@ private fun AttributesFilterRow(
             onClick = {
                 onChange(filter.copy(requireLimit = !filter.requireLimit, onlyUnknownLimit = false))
             },
-            label = { Text("Has limit") },
+            label = { Text("С лимитом") },
         )
         FilterChip(
             selected = filter.onlyUnknownLimit,
             onClick = {
                 onChange(filter.copy(onlyUnknownLimit = !filter.onlyUnknownLimit, requireLimit = false))
             },
-            label = { Text("No limit") },
+            label = { Text("Без лимита") },
         )
         FilterChip(
             selected = filter.excludeBlocked,
             onClick = {
                 onChange(filter.copy(excludeBlocked = !filter.excludeBlocked))
             },
-            label = { Text("Hide blocked") },
+            label = { Text("Скрыть заблокированные") },
         )
     }
 }
@@ -547,23 +548,23 @@ private fun EmptyListState(
                 modifier = Modifier.size(56.dp),
             )
             Text(
-                text = "No cameras found",
+                text = "Камеры не найдены",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             Text(
                 text =
                     if (filterActive) {
-                        "No cameras match your current search or filters."
+                        "Нет камер, соответствующих условиям поиска или фильтрам."
                     } else {
-                        "No camera data loaded. Please check data sync in settings."
+                        "База камер пуста. Проверьте обновление данных в настройках."
                     },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (filterActive) {
                 OutlinedButton(onClick = onReset) {
-                    Text("Reset all filters")
+                    Text("Сбросить все фильтры")
                 }
             }
         }
@@ -593,7 +594,7 @@ private fun CameraReportDialog(
                     OutlinedTextField(
                         value = speedText,
                         onValueChange = { speedText = it.filter { ch -> ch.isDigit() } },
-                        label = { Text("Correct speed limit (km/h)") },
+                        label = { Text("Корректный лимит скорости (км/ч)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -601,7 +602,7 @@ private fun CameraReportDialog(
                 OutlinedTextField(
                     value = commentText,
                     onValueChange = { commentText = it },
-                    label = { Text("Note / comment (optional)") },
+                    label = { Text("Примечание / комментарий (необязательно)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -614,12 +615,12 @@ private fun CameraReportDialog(
                     onSubmit(selectedType, limit, commentText.ifBlank { null })
                 },
             ) {
-                Text("Submit Report")
+                Text("Отправить отчет")
             }
         },
         dismissButton = {
             OutlinedButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text("Отмена")
             }
         },
     )
@@ -634,7 +635,7 @@ private fun CameraReportDialogTitle(camera: CameraRow) {
         CompactSpeedLimitBadge(limitKmh = camera.limitKmh)
         Column {
             Text(
-                text = "Report Camera",
+                text = "Сообщить о камере",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -652,22 +653,22 @@ private fun ReportReasonSelector(
     selectedType: HazardReportType,
     onSelect: (HazardReportType) -> Unit,
 ) {
-    Text("Select report reason:", style = MaterialTheme.typography.labelMedium)
+    Text("Причина сообщения:", style = MaterialTheme.typography.labelMedium)
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         FilterChip(
             selected = selectedType == HazardReportType.WRONG_SPEED_LIMIT,
             onClick = { onSelect(HazardReportType.WRONG_SPEED_LIMIT) },
-            label = { Text("Limit") },
+            label = { Text("Лимит") },
         )
         FilterChip(
             selected = selectedType == HazardReportType.REMOVED_CAMERA,
             onClick = { onSelect(HazardReportType.REMOVED_CAMERA) },
-            label = { Text("Removed") },
+            label = { Text("Демонтирована") },
         )
         FilterChip(
             selected = selectedType == HazardReportType.FALSE_POSITIVE,
             onClick = { onSelect(HazardReportType.FALSE_POSITIVE) },
-            label = { Text("False alarm") },
+            label = { Text("Ложная отметка") },
         )
     }
 }

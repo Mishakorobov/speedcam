@@ -1,0 +1,167 @@
+name: Camera Database Release
+
+on:
+  schedule:
+    # Run every Sunday at 03:00 UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      force_download:
+        description: 'Force re-download of all extracts (ignore local MD5 cache)'
+        type: boolean
+        default: false
+      publish_release:
+        description: 'Publish a GitHub Release with assets'
+        type: boolean
+        default: true
+      custom_version:
+        description: 'Override release version (default: YYYY.MM.DD)'
+        type: string
+        required: false
+
+concurrency:
+  group: db-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release Camera Database
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sqlite3 curl jq zip
+
+      - name: Determine release version
+        id: vars
+        run: |
+          DATE_TAG=$(date -u +'%Y.%m.%d')
+          INPUT_VERSION="${{ github.event.inputs.custom_version }}"
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="$DATE_TAG"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "TAG_NAME=db-$VERSION" >> $GITHUB_ENV
+          echo "Calculated version: $VERSION"
+
+      - name: Make scripts executable
+        run: |
+          chmod +x gradlew tools/import/update-osm.sh
+
+      - name: Fetch OSM extracts & build camera database
+        run: |
+          FORCE_ARG="false"
+          if [ "${{ github.event.inputs.force_download }}" = "true" ]; then
+            FORCE_ARG="true"
+          fi
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/db-${VERSION}/russia.db"
+          
+          FORCE="$FORCE_ARG" \
+          VERSION="$VERSION" \
+          DOWNLOAD_URL="$DOWNLOAD_URL" \
+          ./tools/import/update-osm.sh
+
+      - name: Verify database integrity and manifest parity
+        id: verify
+        run: |
+          ./gradlew :tools:import:verifyDatabase -Pdb=data/russia.db -Pmanifest=data/manifest.json
+          
+          # Extract stats for summary and release notes
+          CAMERAS=$(sqlite3 data/russia.db "SELECT count(*) FROM camera;")
+          SECTIONS=$(sqlite3 data/russia.db "SELECT count(*) FROM section;")
+          SHA256=$(jq -r .sha256 data/manifest.json)
+          
+          echo "CAMERAS=$CAMERAS" >> $GITHUB_ENV
+          echo "SECTIONS=$SECTIONS" >> $GITHUB_ENV
+          echo "SHA256=$SHA256" >> $GITHUB_ENV
+          
+          echo "### 📷 SpeedCam Database v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ✅ Verified OK (SQLite integrity + Room schema hash)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cameras count:** ${CAMERAS}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Sections count:** ${SECTIONS}" >> $GITHUB_STEP_SUMMARY
+          echo "- **SHA-256:** \`${SHA256}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Package release archives
+        run: |
+          cd data
+          zip -9 russia.db.zip russia.db
+          gzip -k -9 russia.db
+          sha256sum russia.db russia.db.zip russia.db.gz manifest.json > checksums.txt
+          ls -la
+          cd ..
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'schedule' || github.event.inputs.publish_release != 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_TITLE="SpeedCam Database v${VERSION}"
+          RELEASE_NOTES="Weekly automated build of the Russian camera database compiled from OpenStreetMap extracts and community SpeedCam sources.
+
+### Release Details
+- **Version:** \`${VERSION}\`
+- **Cameras:** ${CAMERAS}
+- **Average-speed sections:** ${SECTIONS}
+- **SHA-256 (russia.db):** \`${SHA256}\`
+
+### Included Files
+- \`russia.db\`: SQLite database ready for installation into the app.
+- \`russia.db.zip\` / \`russia.db.gz\`: Compressed archives for bandwidth saving.
+- \`manifest.json\`: Verification manifest used by in-app auto-updater.
+- \`checksums.txt\`: SHA-256 checksums for all release artifacts."
+
+          # Check if release/tag already exists and replace or create
+          if gh release view "db-${VERSION}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release db-${VERSION} already exists. Uploading updated assets..."
+            gh release upload "db-${VERSION}" \
+              data/russia.db \
+              data/russia.db.zip \
+              data/russia.db.gz \
+              data/manifest.json \
+              data/checksums.txt \
+              --clobber \
+              --repo "${{ github.repository }}"
+          else
+            echo "Creating new release db-${VERSION}..."
+            gh release create "db-${VERSION}" \
+              data/russia.db \
+              data/russia.db.zip \
+              data/russia.db.gz \
+              data/manifest.json \
+              data/checksums.txt \
+              --title "$RELEASE_TITLE" \
+              --notes "$RELEASE_NOTES" \
+              --repo "${{ github.repository }}"
+          fi
+
+      - name: Commit updated manifest to main branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/manifest.json
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(data): update camera database manifest to v${VERSION} [skip ci]"
+            git push origin main
+          else
+            echo "Manifest already up to date, no commit needed."
+          fi

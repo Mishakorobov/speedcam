@@ -1,7 +1,14 @@
 package com.speedcam.app.map
 
+import com.speedcam.core.detect.Camera
+import com.speedcam.core.detect.CameraKind
+import com.speedcam.core.detect.CameraSource
+import com.speedcam.core.detect.SectionRecord
 import com.speedcam.core.geo.LatLon
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -164,5 +171,81 @@ class VectorMapTest {
     fun `parseOverpassJson handles empty or invalid json safely`() {
         val emptyRoads = VectorRoadRepository.parseOverpassJson("""{"elements": []}""")
         assertTrue(emptyRoads.isEmpty())
+    }
+
+    @Test
+    fun `findCameraClusterCentroid calculates centroid accurately`() {
+        assertNull(MapCenteringHelper.findCameraClusterCentroid(emptyList()))
+
+        val cam1 =
+            Camera(
+                id = 1L,
+                position = LatLon(50.0, 30.0),
+                source = CameraSource.OSM,
+                externalId = "1",
+                kind = CameraKind.FIXED,
+            )
+        val cam2 =
+            Camera(
+                id = 2L,
+                position = LatLon(60.0, 40.0),
+                source = CameraSource.OSM,
+                externalId = "2",
+                kind = CameraKind.FIXED,
+            )
+
+        val centroid = MapCenteringHelper.findCameraClusterCentroid(listOf(cam1, cam2))
+        assertNotNull(centroid)
+        assertEquals(55.0, centroid!!.lat, 1e-4)
+        assertEquals(35.0, centroid.lon, 1e-4)
+    }
+
+    @Test
+    fun `isAtDefaultCenter accurately detects default Moscow coordinates`() {
+        val state = VectorMapState(initialCenter = LatLon(55.7558, 37.6173))
+        assertTrue(state.isAtDefaultCenter())
+
+        state.centerOn(LatLon(59.9343, 30.3351))
+        assertFalse(state.isAtDefaultCenter())
+    }
+
+    @Test
+    fun `SyntheticRoadCorridors generates vector roads from SPECS sections`() {
+        val cam1 =
+            Camera(
+                id = 100L,
+                position = LatLon(55.10, 37.10),
+                source = CameraSource.OSM,
+                externalId = "100",
+                kind = CameraKind.AVERAGE_ENTRY,
+            )
+        val cam2 =
+            Camera(
+                id = 200L,
+                position = LatLon(55.20, 37.20),
+                source = CameraSource.OSM,
+                externalId = "200",
+                kind = CameraKind.AVERAGE_EXIT,
+            )
+        val section =
+            SectionRecord(
+                from = LatLon(55.10, 37.10),
+                to = LatLon(55.20, 37.20),
+                limitKmh = 90,
+            )
+
+        val corridors = SyntheticRoadCorridors.createSectionCorridors(listOf(section), listOf(cam1, cam2))
+        assertEquals(1, corridors.size)
+        val road = corridors[0]
+        assertEquals(RoadClass.MOTORWAY, road.kind)
+        assertEquals(2, road.points.size)
+        assertEquals(55.10, road.points[0].lat, 1e-4)
+        assertEquals(55.20, road.points[1].lat, 1e-4)
+    }
+
+    @Test
+    fun `VectorRoadRepository defines multiple mirrors and lowered MIN_ROAD_ZOOM`() {
+        assertTrue(VectorRoadRepository.MIN_ROAD_ZOOM <= 11.5f)
+        assertTrue(VectorRoadRepository.OVERPASS_MIRRORS.size >= 2)
     }
 }

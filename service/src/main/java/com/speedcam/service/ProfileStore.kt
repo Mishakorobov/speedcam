@@ -6,6 +6,8 @@ import com.speedcam.core.detect.AlertProfile
 import com.speedcam.core.detect.QuickSetting
 import com.speedcam.core.detect.TransportProfile
 import com.speedcam.core.media.OutputMode
+import com.speedcam.core.media.VoiceEngine
+import com.speedcam.core.media.VoicePhraseStyle
 
 /**
  * Persists what the driver has chosen about detection.
@@ -194,6 +196,36 @@ class ProfileStore(
         get() = prefs.getString(KEY_WEAR_HAPTIC_PROFILE, "MOTORCYCLE_HIGH") ?: "MOTORCYCLE_HIGH"
         set(value) = prefs.edit().putString(KEY_WEAR_HAPTIC_PROFILE, value).apply()
 
+    /** Whether the offline tile background layer (MBTiles / SQLite cache) is rendered on the map. */
+    var offlineTilesEnabled: Boolean
+        get() = prefs.getBoolean(KEY_OFFLINE_TILES_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_OFFLINE_TILES_ENABLED, value).apply()
+
+    /** Absolute file path to the active imported MBTiles database archive, if any. */
+    var activeMbTilesPath: String?
+        get() = prefs.getString(KEY_ACTIVE_MBTILES_PATH, null)
+        set(value) = prefs.edit().putString(KEY_ACTIVE_MBTILES_PATH, value).apply()
+
+    /** Selected voice engine: Android TTS, pre-recorded audio pack, or disabled. */
+    var voiceEngine: VoiceEngine
+        get() = VoiceEngine.fromOrdinal(prefs.getInt(KEY_VOICE_ENGINE, VoiceEngine.TTS.ordinal))
+        set(value) = prefs.edit().putInt(KEY_VOICE_ENGINE, value.ordinal).apply()
+
+    /** Spoken phrase style: FULL descriptive announcement vs SHORT concise announcement. */
+    var voicePhraseStyle: VoicePhraseStyle
+        get() = VoicePhraseStyle.fromOrdinal(prefs.getInt(KEY_VOICE_PHRASE_STYLE, VoicePhraseStyle.FULL.ordinal))
+        set(value) = prefs.edit().putInt(KEY_VOICE_PHRASE_STYLE, value.ordinal).apply()
+
+    /** Text-to-speech speech rate multiplier (0.8x - 1.4x). */
+    var ttsSpeechRate: Float
+        get() = prefs.getFloat(KEY_TTS_SPEECH_RATE, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_TTS_SPEECH_RATE, value).apply()
+
+    /** Identifier of the active audio phrase pack, if any. */
+    var activeVoicePackId: String?
+        get() = prefs.getString(KEY_ACTIVE_VOICE_PACK_ID, null)
+        set(value) = prefs.edit().putString(KEY_ACTIVE_VOICE_PACK_ID, value).apply()
+
     /**
      * The profile detection runs under right now.
      *
@@ -247,6 +279,12 @@ class ProfileStore(
         const val KEY_HEAD_UNIT_AUTO_START = "headUnitAutoStart"
         const val KEY_WEAR_COMPANION_ENABLED = "wearCompanionEnabled"
         const val KEY_WEAR_HAPTIC_PROFILE = "wearHapticProfile"
+        const val KEY_OFFLINE_TILES_ENABLED = "offlineTilesEnabled"
+        const val KEY_ACTIVE_MBTILES_PATH = "activeMbTilesPath"
+        const val KEY_VOICE_ENGINE = "voiceEngine"
+        const val KEY_VOICE_PHRASE_STYLE = "voicePhraseStyle"
+        const val KEY_TTS_SPEECH_RATE = "ttsSpeechRate"
+        const val KEY_ACTIVE_VOICE_PACK_ID = "activeVoicePackId"
         const val DEFAULT_STOP_DELAY_SECONDS = 20
     }
 }

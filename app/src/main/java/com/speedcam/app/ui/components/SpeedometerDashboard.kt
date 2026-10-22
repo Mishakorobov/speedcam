@@ -52,9 +52,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.speedcam.app.ui.theme.BrandPrimaryDark
+import com.speedcam.app.ui.theme.BrandSecondaryDark
 import com.speedcam.app.ui.theme.SpeedDanger
 import com.speedcam.app.ui.theme.SpeedSafe
 import com.speedcam.app.ui.theme.SpeedWarning
+import com.speedcam.app.util.toRussianTitle
+import com.speedcam.core.detect.QuickSetting
 import com.speedcam.service.DetectionUiState
 import kotlin.math.roundToInt
 
@@ -185,7 +188,7 @@ private fun SpeedometerDial(
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = "KM/H",
+                text = "КМ/Ч",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Bold,
@@ -219,7 +222,7 @@ private fun OverspeedAlertBanner(
             horizontalArrangement = Arrangement.Center,
         ) {
             Text(
-                text = "⚠️ OVER LIMIT BY +$excess KM/H",
+                text = "⚠️ ПРЕВЫШЕНИЕ НА +$excess КМ/Ч",
                 color = SpeedDanger,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
@@ -260,7 +263,7 @@ private fun RadarControlButton(
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = if (running) "STOP RADAR MONITORING" else "START RADAR DETECTION",
+            text = if (running) "ОСТАНОВИТЬ РАДАР" else "ЗАПУСТИТЬ РАДАР",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
         )
@@ -288,13 +291,13 @@ private fun RadarQuickActionsRow(
                     } else {
                         Icons.AutoMirrored.Filled.VolumeUp
                     },
-                contentDescription = "Mute",
+                contentDescription = "Звук",
                 modifier = Modifier.size(18.dp),
                 tint = if (state.muted) SpeedWarning else MaterialTheme.colorScheme.onSurface,
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = if (state.muted) "Muted" else "Sound",
+                text = if (state.muted) "Без звука" else "Звук",
                 style = MaterialTheme.typography.labelMedium,
             )
         }
@@ -306,11 +309,11 @@ private fun RadarQuickActionsRow(
         ) {
             Icon(
                 imageVector = Icons.Default.AddAlert,
-                contentDescription = "Report",
+                contentDescription = "Отметка",
                 modifier = Modifier.size(18.dp),
             )
             Spacer(modifier = Modifier.width(6.dp))
-            Text("Report", style = MaterialTheme.typography.labelMedium)
+            Text("Отметка", style = MaterialTheme.typography.labelMedium)
         }
 
         FilledTonalButton(
@@ -365,7 +368,7 @@ private fun GpsStatusPill(hasFix: Boolean) {
         )
         Spacer(modifier = Modifier.width(5.dp))
         Text(
-            text = if (hasFix) "GPS LOCKED" else "SEARCHING GPS",
+            text = if (hasFix) "GPS АКТИВЕН" else "ПОИСК GPS",
             color = if (hasFix) SpeedSafe else SpeedWarning,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
@@ -385,7 +388,7 @@ private fun AudioProfileBadges(
         if (headsetConnected) {
             Surface(
                 shape = RoundedCornerShape(8.dp),
-                color = BrandPrimaryDark.copy(alpha = 0.15f),
+                color = BrandSecondaryDark.copy(alpha = 0.15f),
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
@@ -394,19 +397,23 @@ private fun AudioProfileBadges(
                     Icon(
                         imageVector = Icons.Default.Headset,
                         contentDescription = "Bluetooth",
-                        tint = BrandPrimaryDark,
+                        tint = BrandSecondaryDark,
                         modifier = Modifier.size(13.dp),
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "BT AUDIO",
-                        color = BrandPrimaryDark,
+                        text = "BT АУДИО",
+                        color = BrandSecondaryDark,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                     )
                 }
             }
         }
+
+        val localizedProfile =
+            QuickSetting.entries.find { it.displayName.equals(profileName, ignoreCase = true) }?.toRussianTitle()
+                ?: profileName
 
         Surface(
             shape = RoundedCornerShape(8.dp),
@@ -424,7 +431,7 @@ private fun AudioProfileBadges(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = profileName.uppercase(),
+                    text = localizedProfile.uppercase(),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,

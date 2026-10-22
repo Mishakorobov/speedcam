@@ -116,6 +116,8 @@ class CameraDatabaseInstaller(
                 check(target.renameTo(superseded)) {
                     "could not move the existing database aside: $target"
                 }
+                File(parent, target.name + "-wal").delete()
+                File(parent, target.name + "-shm").delete()
             }
 
             if (!staging.renameTo(target)) {
@@ -128,6 +130,12 @@ class CameraDatabaseInstaller(
             superseded.delete()
             if (hadPrevious) DatabaseInstallOutcome.REPAIRED else DatabaseInstallOutcome.INSTALLED
         }
+
+    /**
+     * Forcibly replaces the current database with a fresh copy from APK assets,
+     * resetting user data or recovering from corrupted state.
+     */
+    fun forceInstallFromAssets(): Result<DatabaseInstallOutcome> = attemptInstall()
 
     /**
      * Atomically replaces the current database with [candidate].

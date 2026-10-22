@@ -2,16 +2,28 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Warning triangle, inset within the 72dp adaptive-icon safe zone. -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,29 L77,71 L31,71 Z" />
-    <path
-        android:fillColor="#0B3D2E"
-        android:pathData="M54,41 L57.5,55 L50.5,55 Z" />
-    <path
-        android:fillColor="#0B3D2E"
-        android:pathData="M54,59 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
+    android:viewportWidth="256"
+    android:viewportHeight="256">
+    <!-- Centered Velocity Iris Brand Symbol within 72dp adaptive icon safe zone -->
+    <group
+        android:pivotX="128"
+        android:pivotY="128"
+        android:scaleX="0.72"
+        android:scaleY="0.72">
+        <!-- 3-blade aerodynamic aperture in Blaze Orange (#FF5E1E) -->
+        <path
+            android:fillColor="#FF5E1E"
+            android:pathData="M 225.7,92.4 A 104,104 0 0,1 163.6,225.7 A 64,64 0 0,0 158.9,164.8 A 48,48 0 0,0 175.8,123.8 A 64,64 0 0,1 225.7,92.4 Z" />
+        <path
+            android:fillColor="#FF5E1E"
+            android:pathData="M 109.9,230.4 A 104,104 0 0,1 25.6,109.9 A 64,64 0 0,0 80.7,136.3 A 48,48 0 0,0 107.7,171.5 A 64,64 0 0,1 109.9,230.4 Z" />
+        <path
+            android:fillColor="#FF5E1E"
+            android:pathData="M 48.3,61.2 A 104,104 0 0,1 194.8,48.3 A 64,64 0 0,0 144.4,82.9 A 48,48 0 0,0 100.5,88.7 A 64,64 0 0,1 48.3,61.2 Z" />
+        <!-- Optical pupil ring in Pure White (#FFFFFF) -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M 128,96 A 32,32 0 1,1 127.9,96 Z M 128,112 A 16,16 0 1,0 127.9,112 Z" />
+    </group>
 </vector>

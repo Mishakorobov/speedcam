@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="title-c">
+  <title id="title-c">SpeedCam Concept C - HUD Reticle</title>
+  <!-- Top-Left Focus Bracket -->
+  <path fill="#0F172A" d="M 40 92 L 40 60 C 40 48.9 48.9 40 60 40 L 92 40 L 92 56 L 64 56 C 59.6 56 56 59.6 56 64 L 56 92 Z"/>
+  <!-- Top-Right Focus Bracket -->
+  <path fill="#0F172A" d="M 216 92 L 216 60 C 216 48.9 207.1 40 196 40 L 164 40 L 164 56 L 192 56 C 196.4 56 200 59.6 200 64 L 200 92 Z"/>
+  <!-- Bottom-Left Focus Bracket -->
+  <path fill="#0F172A" d="M 40 164 L 40 196 C 40 207.1 48.9 216 60 216 L 92 216 L 92 200 L 64 200 C 59.6 200 56 196.4 56 192 L 56 164 Z"/>
+  <!-- Bottom-Right Focus Bracket -->
+  <path fill="#0F172A" d="M 216 164 L 216 196 C 216 207.1 207.1 216 196 216 L 164 216 L 164 200 L 192 200 C 196.4 200 200 196.4 200 192 L 200 164 Z"/>
+  <!-- Primary Velocity Chevron (45-degree forward thrust) -->
+  <path fill="#0F172A" d="M 128 68 L 184 124 L 160 124 L 128 92 L 96 124 L 72 124 Z"/>
+  <!-- Secondary Proximity Chevron -->
+  <path fill="#0F172A" d="M 128 116 L 172 160 L 152 160 L 128 136 L 104 160 L 84 160 Z"/>
+  <!-- Sensor Beacon -->
+  <circle cx="128" cy="180" r="14" fill="#0F172A"/>
+</svg>

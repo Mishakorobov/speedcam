@@ -3,6 +3,8 @@ package com.speedcam.app.cameras
 import com.speedcam.core.detect.Camera
 import com.speedcam.core.detect.CameraKind
 import com.speedcam.core.detect.CameraSource
+import com.speedcam.core.geo.Geo
+import com.speedcam.core.geo.LatLon
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -57,6 +59,7 @@ data class CameraRow(
     val source: CameraSource,
     val operator: String?,
     val blocked: Boolean,
+    val distanceM: Double? = null,
 ) {
     /** A limit of null is "not recorded", never zero. */
     val limitLabel: String get() = limitKmh?.takeIf { it > 0 }?.toString() ?: "—"
@@ -79,34 +82,54 @@ object CameraFilterEngine {
         filter: CameraFilter,
         blocked: List<Pair<Double, Double>> = emptyList(),
         blockRadiusM: Double = DEFAULT_BLOCK_RADIUS_M,
+        referenceLocation: LatLon? = null,
+        sortByDistance: Boolean = false,
     ): List<CameraRow> {
         val needle = filter.query.trim().lowercase()
 
-        return cameras
-            .asSequence()
-            .filter { filter.region == null || filter.region.contains(it.position) }
-            .filter { matchesLimits(it, filter) }
-            .filter { matchesText(it, needle) }
-            .map { camera ->
-                CameraRow(
-                    id = camera.id,
-                    latitude = camera.position.lat,
-                    longitude = camera.position.lon,
-                    limitKmh = camera.limitKmh,
-                    kind = camera.kind,
-                    source = camera.source,
-                    operator = camera.operator,
-                    blocked = isBlocked(camera, blocked, blockRadiusM),
-                )
-            }.filter {
-                !filter.excludeBlocked || !it.blocked
-            }.sortedWith(
-                // Blocked first so they are reachable to unblock, then by limit so the rows a
-                // driver is scanning for are grouped, then by id for a stable order.
-                compareByDescending<CameraRow> { it.blocked }
-                    .thenBy { it.limitKmh ?: Int.MAX_VALUE }
-                    .thenBy { it.id },
-            ).toList()
+        val rows =
+            cameras
+                .asSequence()
+                .filter { filter.region == null || filter.region.contains(it.position) }
+                .filter { matchesLimits(it, filter) }
+                .filter { matchesText(it, needle) }
+                .map { camera ->
+                    val distM =
+                        referenceLocation?.let { ref ->
+                            Geo.haversineMeters(ref, camera.position)
+                        }
+                    CameraRow(
+                        id = camera.id,
+                        latitude = camera.position.lat,
+                        longitude = camera.position.lon,
+                        limitKmh = camera.limitKmh,
+                        kind = camera.kind,
+                        source = camera.source,
+                        operator = camera.operator,
+                        blocked = isBlocked(camera, blocked, blockRadiusM),
+                        distanceM = distM,
+                    )
+                }.filter {
+                    !filter.excludeBlocked || !it.blocked
+                }
+
+        return if (sortByDistance && referenceLocation != null) {
+            rows
+                .sortedWith(
+                    compareByDescending<CameraRow> { it.blocked }
+                        .thenBy { it.distanceM ?: Double.MAX_VALUE }
+                        .thenBy { it.id },
+                ).toList()
+        } else {
+            rows
+                .sortedWith(
+                    // Blocked first so they are reachable to unblock, then by limit so the rows a
+                    // driver is scanning for are grouped, then by id for a stable order.
+                    compareByDescending<CameraRow> { it.blocked }
+                        .thenBy { it.limitKmh ?: Int.MAX_VALUE }
+                        .thenBy { it.id },
+                ).toList()
+        }
     }
 
     /**

@@ -23,14 +23,14 @@ class PipHelperTest {
 
     @Test
     fun `formatCameraKindLabel maps camera kinds correctly`() {
-        assertEquals("RED LIGHT", formatCameraKindLabel(CameraKind.RED_LIGHT))
-        assertEquals("SPECS START", formatCameraKindLabel(CameraKind.AVERAGE_ENTRY))
-        assertEquals("SPECS END", formatCameraKindLabel(CameraKind.AVERAGE_EXIT))
-        assertEquals("MOBILE", formatCameraKindLabel(CameraKind.MOBILE))
-        assertEquals("COMPLEX", formatCameraKindLabel(CameraKind.COMPLEX))
-        assertEquals("DUMMY", formatCameraKindLabel(CameraKind.DUMMY))
-        assertEquals("SPEED CAM", formatCameraKindLabel(CameraKind.FIXED))
-        assertEquals("HAZARD", formatCameraKindLabel(CameraKind.UNKNOWN))
+        assertEquals("СВЕТОФОР", formatCameraKindLabel(CameraKind.RED_LIGHT))
+        assertEquals("НАЧАЛО КСС", formatCameraKindLabel(CameraKind.AVERAGE_ENTRY))
+        assertEquals("КОНЕЦ КСС", formatCameraKindLabel(CameraKind.AVERAGE_EXIT))
+        assertEquals("ЗАСАДА", formatCameraKindLabel(CameraKind.MOBILE))
+        assertEquals("КОМПЛЕКС", formatCameraKindLabel(CameraKind.COMPLEX))
+        assertEquals("МУЛЯЖ", formatCameraKindLabel(CameraKind.DUMMY))
+        assertEquals("КАМЕРА", formatCameraKindLabel(CameraKind.FIXED))
+        assertEquals("ОПАСНОСТЬ", formatCameraKindLabel(CameraKind.UNKNOWN))
     }
 
     @Test

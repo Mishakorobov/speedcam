@@ -48,23 +48,22 @@ tasks.test {
  *
  *   ./gradlew :tools:import:run -PosmDir=osm -Poutput=data/russia.db
  *   ./gradlew :tools:import:run -PosmDir=osm -Poutput=data/russia.db -PspeedcamFile=rus.txt
- *
- * With no properties at all the task falls back to the project's own `osm\` folder and
- * `data\russia.db`, so a plain `./gradlew :tools:import:run` does the expected thing and
- * writes to the same path update-osm.bat maintains.
+ *   ./gradlew :tools:import:run -PosmDir=osm -Poutput=data/russia.db -Pmanifest=data/manifest.json
  */
 tasks.named<JavaExec>("run") {
-    // gradleProperty returns the raw String; file() resolves it against the project so a
-    // relative path and one containing spaces both work.
     val projectRoot = rootProject.projectDir
 
     val osmDir =
-        providers.gradleProperty("osmDir").orNull?.let { file(it) }
+        providers.gradleProperty("osmDir").orNull?.let { rootProject.file(it) }
             ?: projectRoot.resolve("osm")
     val output =
-        providers.gradleProperty("output").orNull?.let { file(it) }
+        providers.gradleProperty("output").orNull?.let { rootProject.file(it) }
             ?: projectRoot.resolve("data").resolve("russia.db")
-    val speedcamFile = providers.gradleProperty("speedcamFile").orNull?.let { file(it) }
+    val speedcamFile = providers.gradleProperty("speedcamFile").orNull?.let { rootProject.file(it) }
+    val contracamFile = providers.gradleProperty("contracamFile").orNull?.let { rootProject.file(it) }
+    val manifest = providers.gradleProperty("manifest").orNull?.let { rootProject.file(it) }
+    val downloadUrl = providers.gradleProperty("downloadUrl").orNull
+    val version = providers.gradleProperty("version").orNull
 
     val extracts =
         fileTree(osmDir) { include("*-latest.osm.pbf") }
@@ -72,13 +71,10 @@ tasks.named<JavaExec>("run") {
             .sortedBy { it.name }
 
     when {
-        // Extracts present: build the database from them.
-        extracts.isNotEmpty() -> {
-            // Built to a staging path and moved into place afterwards, so a failure or a
-            // cancelled run cannot leave a half-written file where a working database is
-            // expected. update-osm.bat does the same and additionally checks integrity and
-            // the schema hash; this is the floor, not the full check.
+        // Extracts or custom source files present: build the database from them.
+        extracts.isNotEmpty() || speedcamFile != null || contracamFile != null -> {
             val staging = File(output.absolutePath + ".staging")
+            val stagingManifest = manifest?.let { File(it.absolutePath + ".staging") }
 
             args("--output", staging.absolutePath)
             extracts.forEach { args("--osm-pbf", it.absolutePath) }
@@ -87,14 +83,26 @@ tasks.named<JavaExec>("run") {
                 if (!speedcamFile.isFile) throw GradleException("SpeedCam file not found: $speedcamFile")
                 args("--speedcam", speedcamFile.absolutePath)
             }
+            if (contracamFile != null) {
+                if (!contracamFile.isFile) throw GradleException("ContraCam file not found: $contracamFile")
+                args("--contracam", contracamFile.absolutePath)
+            }
+            if (stagingManifest != null) {
+                args("--manifest", stagingManifest.absolutePath)
+            }
+            if (downloadUrl != null) {
+                args("--download-url", downloadUrl)
+            }
+            if (version != null) {
+                args("--version", version)
+            }
+
             logger.lifecycle("Importing ${extracts.size} extract(s) from $osmDir into $output")
 
             doLast {
                 if (!staging.isFile || staging.length() == 0L) {
                     throw GradleException("the importer produced no output; $output was left untouched")
                 }
-                // Read the size before the move: afterwards the staging path is gone and
-                // reports 0.
                 val bytes = staging.length()
                 output.parentFile?.mkdirs()
                 if (output.isFile) {
@@ -107,20 +115,78 @@ tasks.named<JavaExec>("run") {
                 if (!staging.renameTo(output)) {
                     throw GradleException("could not install $staging as $output")
                 }
+                if (stagingManifest != null && stagingManifest.isFile) {
+                    manifest.parentFile?.mkdirs()
+                    if (manifest.isFile) manifest.delete()
+                    if (!stagingManifest.renameTo(manifest)) {
+                        throw GradleException("could not install manifest to $manifest")
+                    }
+                }
                 logger.lifecycle("Installed ${output.absolutePath} ($bytes bytes)")
             }
         }
 
-        // No extracts, but the caller named a source explicitly: leave the arguments alone
-        // so --args or an online source still works.
         osmDir.exists() && providers.gradleProperty("osmDir").isPresent -> {
             throw GradleException("no *-latest.osm.pbf files found in $osmDir")
         }
 
         else ->
             logger.lifecycle(
-                "No extracts in $osmDir - run tools\\import\\update-osm.bat to fetch them, " +
-                    "or pass --args=... to use another source.",
+                "No extracts in $osmDir - run tools/import/update-osm or pass -PspeedcamFile=... / -PcontracamFile=...",
             )
+    }
+}
+
+/**
+ * Task to verify an existing database against Room schema hash and optional manifest.
+ *
+ * Usage:
+ *   ./gradlew :tools:import:verifyDatabase -Pdb=data/russia.db -Pmanifest=data/manifest.json
+ */
+tasks.register<JavaExec>("verifyDatabase") {
+    mainClass.set("com.speedcam.tools.import.MainKt")
+    classpath = sourceSets["main"].runtimeClasspath
+
+    val projectRoot = rootProject.projectDir
+    val dbFile =
+        providers.gradleProperty("db").orNull?.let { rootProject.file(it) }
+            ?: projectRoot.resolve("data").resolve("russia.db")
+    val manifestFile =
+        providers.gradleProperty("manifest").orNull?.let { rootProject.file(it) }
+            ?: projectRoot.resolve("data").resolve("manifest.json")
+
+    args("--verify", dbFile.absolutePath)
+    if (manifestFile.isFile) {
+        args("--manifest", manifestFile.absolutePath)
+    }
+}
+
+/**
+ * Task to generate or regenerate a verified manifest.json for an existing database.
+ *
+ * Usage:
+ *   ./gradlew :tools:import:generateManifest -Pdb=data/russia.db -Pmanifest=data/manifest.json
+ */
+tasks.register<JavaExec>("generateManifest") {
+    mainClass.set("com.speedcam.tools.import.MainKt")
+    classpath = sourceSets["main"].runtimeClasspath
+
+    val projectRoot = rootProject.projectDir
+    val dbFile =
+        providers.gradleProperty("db").orNull?.let { rootProject.file(it) }
+            ?: projectRoot.resolve("data").resolve("russia.db")
+    val manifestFile =
+        providers.gradleProperty("manifest").orNull?.let { rootProject.file(it) }
+            ?: projectRoot.resolve("data").resolve("manifest.json")
+    val downloadUrl = providers.gradleProperty("downloadUrl").orNull
+    val version = providers.gradleProperty("version").orNull
+
+    args("--output", dbFile.absolutePath)
+    args("--manifest", manifestFile.absolutePath)
+    if (downloadUrl != null) {
+        args("--download-url", downloadUrl)
+    }
+    if (version != null) {
+        args("--version", version)
     }
 }

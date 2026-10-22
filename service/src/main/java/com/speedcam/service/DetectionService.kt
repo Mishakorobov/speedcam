@@ -19,6 +19,7 @@ import com.speedcam.core.detect.AlertDecision
 import com.speedcam.core.detect.AlertProfile
 import com.speedcam.core.detect.Fix
 import com.speedcam.core.detect.SectionEvent
+import com.speedcam.core.detect.SpeedFilter
 import com.speedcam.core.media.MediaAlertEngine
 import com.speedcam.core.media.OutputMode
 import com.speedcam.service.wear.WearCompanionBridge
@@ -52,6 +53,7 @@ class DetectionService : Service() {
     private val gpsWatchdog = GpsLostWatchdog()
     private val abuseWatchdog = BackgroundAbuseWatchdog()
     private val adaptiveWatchdog = AdaptiveLocationWatchdog()
+    private val speedFilter = SpeedFilter()
     private val profiles by lazy { ProfileStore(this) }
     private val gpsLostText by lazy { getString(R.string.notification_gps_lost) }
 
@@ -118,6 +120,7 @@ class DetectionService : Service() {
         if (mediaEngine != null) mediaEngine?.release()
         scope.cancel()
         locationSource = null
+        speedFilter.reset()
         adaptiveWatchdog.reset()
         store?.close()
         store = null
@@ -276,9 +279,10 @@ class DetectionService : Service() {
     }
 
     private fun onFix(
-        fix: Fix,
+        rawFix: Fix,
         pipeline: DetectionPipeline,
     ) {
+        val fix = speedFilter.filter(rawFix)
         gpsWatchdog.onFix(fix.timestampMillis)
         val rate = adaptiveWatchdog.onFix(System.currentTimeMillis(), fix)
         locationSource?.setPollingRate(rate)
@@ -305,7 +309,7 @@ class DetectionService : Service() {
         // against itself.
         lastAcceptedFix = result.fix
 
-        publishHazards(result.hazards, fix, result.sectionEvent)
+        publishHazards(result.hazards, result.fix, result.sectionEvent)
         result.sectionEvent?.let { handleSectionEvent(it, profile) }
 
         if (result.hazards.isNotEmpty()) {
@@ -334,6 +338,10 @@ class DetectionService : Service() {
                 // warned. Without this the whole collection dies on the first media exception.
                 runCatching {
                     media.setOutputMode(currentOutputMode())
+                    media.voiceCoordinator.engine = profiles.voiceEngine
+                    media.voiceCoordinator.phraseStyle = profiles.voicePhraseStyle
+                    media.voiceCoordinator.speechRate = profiles.ttsSpeechRate
+                    media.voiceCoordinator.activePackId = profiles.activeVoicePackId
                     media.play(
                         decision = nearest,
                         hazard = nearestHazard,
@@ -413,6 +421,10 @@ class DetectionService : Service() {
 
         runCatching {
             media.setOutputMode(currentOutputMode())
+            media.voiceCoordinator.engine = profiles.voiceEngine
+            media.voiceCoordinator.phraseStyle = profiles.voicePhraseStyle
+            media.voiceCoordinator.speechRate = profiles.ttsSpeechRate
+            media.voiceCoordinator.activePackId = profiles.activeVoicePackId
             media.playSectionEvent(event, profile)
         }.onFailure {
             Log.w(TAG, "Media layer failed on section event; detection continues: ${it.message}")

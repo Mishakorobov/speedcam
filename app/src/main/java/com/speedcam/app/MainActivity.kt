@@ -31,7 +31,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,6 +46,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,10 +64,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import com.speedcam.app.cameras.CameraListActions
 import com.speedcam.app.cameras.CameraRow
 import com.speedcam.app.hud.HudOverlay
 import com.speedcam.app.hud.HudOverlayManager
+import com.speedcam.app.map.MapCenteringHelper
 import com.speedcam.app.map.MapFollowMode
 import com.speedcam.app.map.MapThemeMode
 import com.speedcam.app.map.RadarMapCard
@@ -76,8 +77,11 @@ import com.speedcam.app.map.VectorMapScreen
 import com.speedcam.app.map.VectorMapState
 import com.speedcam.app.pip.PipHelper
 import com.speedcam.app.pip.PipSpeedometerContent
+import com.speedcam.app.sync.DatabaseImportHelper
+import com.speedcam.app.sync.DatabaseSyncEngine
 import com.speedcam.app.sync.DatabaseSyncWorker
 import com.speedcam.app.sync.HazardReportSyncWorker
+import com.speedcam.app.sync.SyncResult
 import com.speedcam.app.ui.components.EmptyHazardCard
 import com.speedcam.app.ui.components.PrimaryHazardAlertCard
 import com.speedcam.app.ui.components.SecondaryHazardCard
@@ -92,15 +96,25 @@ import com.speedcam.core.data.HazardReportEntity
 import com.speedcam.core.data.HazardReportType
 import com.speedcam.core.data.contracam.ContraCamArchiveSync
 import com.speedcam.core.detect.Camera
+import com.speedcam.core.detect.CameraSource
+import com.speedcam.core.detect.QuickSetting
 import com.speedcam.core.detect.SectionRecord
+import com.speedcam.core.detect.TransportProfile
 import com.speedcam.core.geo.LatLon
+import com.speedcam.core.media.OutputMode
+import com.speedcam.core.media.VoiceAlertCoordinator
+import com.speedcam.core.media.VoiceEngine
+import com.speedcam.core.media.VoicePackManager
+import com.speedcam.core.media.VoicePhraseStyle
 import com.speedcam.service.CarBluetoothManager
 import com.speedcam.service.DetectionState
 import com.speedcam.service.ProfileStore
 import com.speedcam.service.ServiceController
 import com.speedcam.service.wear.WearCompanionBridge
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -135,6 +149,52 @@ class MainActivity : ComponentActivity() {
     private var headUnitAutoStart by mutableStateOf(true)
     private var connectedWatchCount by mutableStateOf(0)
     private var connectedWatchName by mutableStateOf("")
+    private var detectionRunning by mutableStateOf(true)
+    private var quickSetting by mutableStateOf(QuickSetting.MAXIMUM_ALERTS)
+    private var captureDistanceKm by mutableDoubleStateOf(0.0)
+    private var transport by mutableStateOf(TransportProfile.COMMON)
+    private var hudEnabled by mutableStateOf(true)
+    private var hudAutoHide by mutableStateOf(false)
+    private var outputMode by mutableStateOf(OutputMode.STANDARD)
+    private var silentDuringCall by mutableStateOf(false)
+    private var autoUpdateEnabled by mutableStateOf(true)
+    private var updateUrl by mutableStateOf("")
+    private var isManualUpdating by mutableStateOf(false)
+    private var wearCompanionEnabled by mutableStateOf(true)
+    private var wearHapticProfile by mutableStateOf("MOTORCYCLE_HIGH")
+    private var offlineTilesEnabled by mutableStateOf(true)
+    private var activeMbTilesName by mutableStateOf<String?>(null)
+    private var tileCacheStats by mutableStateOf("")
+    private var voiceEngine by mutableStateOf(VoiceEngine.TTS)
+    private var voicePhraseStyle by mutableStateOf(VoicePhraseStyle.FULL)
+    private var ttsSpeechRate by mutableFloatStateOf(1.0f)
+    private var activeVoicePackId by mutableStateOf<String?>(null)
+    private var activeVoicePackName by mutableStateOf<String?>(null)
+    private var installedVoicePacks by mutableStateOf<List<Pair<String, String>>>(emptyList())
+
+    private val voicePackManager by lazy { VoicePackManager(this) }
+    private val voiceAlertCoordinator by lazy { VoiceAlertCoordinator(this) }
+
+    private val filePickerLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            if (uri != null) {
+                importLocalDatabaseFile(uri)
+            }
+        }
+
+    private val mbTilesPickerLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            if (uri != null) {
+                importMbTilesFile(uri)
+            }
+        }
+
+    private val voicePackPickerLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            if (uri != null) {
+                importVoicePackZip(uri)
+            }
+        }
 
     private val pipActionReceiver =
         object : BroadcastReceiver() {
@@ -180,6 +240,24 @@ class MainActivity : ComponentActivity() {
         bluetoothDeviceFilter = profiles.bluetoothDeviceFilter
         bluetoothDeviceFilterName = profiles.bluetoothDeviceFilterName
         bluetoothStopDelaySeconds = profiles.bluetoothStopDelaySeconds
+        detectionRunning = profiles.isEnabled
+        quickSetting = profiles.quickSetting
+        captureDistanceKm = profiles.captureDistanceKm
+        transport = profiles.transport
+        hudEnabled = profiles.hudEnabled
+        hudAutoHide = profiles.hudAutoHide
+        outputMode = profiles.outputMode
+        silentDuringCall = profiles.silentDuringCall
+        autoUpdateEnabled = profiles.autoUpdateEnabled
+        updateUrl = profiles.updateUrl
+        wearCompanionEnabled = profiles.wearCompanionEnabled
+        wearHapticProfile = profiles.wearHapticProfile
+        voiceEngine = profiles.voiceEngine
+        voicePhraseStyle = profiles.voicePhraseStyle
+        ttsSpeechRate = profiles.ttsSpeechRate
+        activeVoicePackId = profiles.activeVoicePackId
+        refreshVoicePacks()
+        refreshOfflineMapStats()
         refreshCameraList()
         requestLocationThenStart()
 
@@ -212,12 +290,17 @@ class MainActivity : ComponentActivity() {
 
     private fun testWearVibration() {
         WearCompanionBridge.sendCommand(this, WearCompanionBridge.PATH_ALERT, "TEST_VIBRATION")
-        Toast.makeText(this, "Test vibration sent to watch", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Тестовая вибрация отправлена на часы", Toast.LENGTH_SHORT).show()
     }
 
     override fun onStop() {
         super.onStop()
         runCatching { unregisterReceiver(pipActionReceiver) }
+    }
+
+    override fun onDestroy() {
+        voiceAlertCoordinator.close()
+        super.onDestroy()
     }
 
     override fun onPictureInPictureModeChanged(
@@ -288,7 +371,7 @@ class MainActivity : ComponentActivity() {
                     sections = sections.collectAsStateWithLifecycle().value,
                     profiles = profiles,
                     hudPermissionGranted = HudOverlay.canDrawOverlays(this),
-                    isUpdating = isUpdating,
+                    isUpdating = isUpdating || isManualUpdating,
                     pendingReportCount = pendingCount,
                     isSyncingReports = isSyncing,
                     isContraCamSyncing = isContraCamSyncing,
@@ -303,10 +386,29 @@ class MainActivity : ComponentActivity() {
                     pipAutoEnter = pipAutoEnter,
                     launcherBroadcastEnabled = launcherBroadcastEnabled,
                     headUnitAutoStart = headUnitAutoStart,
-                    wearCompanionEnabled = profiles.wearCompanionEnabled,
-                    wearHapticProfile = profiles.wearHapticProfile,
+                    wearCompanionEnabled = wearCompanionEnabled,
+                    wearHapticProfile = wearHapticProfile,
                     connectedWatchCount = connectedWatchCount,
                     connectedWatchName = connectedWatchName,
+                    isDetectionEnabled = detectionRunning,
+                    quickSetting = quickSetting,
+                    captureDistanceKm = captureDistanceKm,
+                    transport = transport,
+                    hudEnabled = hudEnabled,
+                    hudAutoHide = hudAutoHide,
+                    outputMode = outputMode,
+                    silentDuringCall = silentDuringCall,
+                    autoUpdateEnabled = autoUpdateEnabled,
+                    updateUrl = updateUrl,
+                    offlineTilesEnabled = offlineTilesEnabled,
+                    activeMbTilesName = activeMbTilesName,
+                    tileCacheStats = tileCacheStats,
+                    voiceEngine = voiceEngine,
+                    voicePhraseStyle = voicePhraseStyle,
+                    ttsSpeechRate = ttsSpeechRate,
+                    activeVoicePackId = activeVoicePackId,
+                    activeVoicePackName = activeVoicePackName,
+                    installedVoicePacks = installedVoicePacks,
                 ),
             actions = buildShellActions(),
         )
@@ -320,7 +422,8 @@ class MainActivity : ComponentActivity() {
         }.getOrDefault(emptyList())
 
     private fun toggleAutoUpdate(enabled: Boolean) {
-        profiles.autoUpdateEnabled = enabled
+        autoUpdateEnabled = enabled
+        lifecycleScope.launch(Dispatchers.IO) { profiles.autoUpdateEnabled = enabled }
         if (enabled) {
             DatabaseSyncWorker.schedulePeriodic(this)
         } else {
@@ -334,8 +437,10 @@ class MainActivity : ComponentActivity() {
     ) {
         bluetoothDeviceFilter = address
         bluetoothDeviceFilterName = name
-        profiles.bluetoothDeviceFilter = address
-        profiles.bluetoothDeviceFilterName = name
+        lifecycleScope.launch(Dispatchers.IO) {
+            profiles.bluetoothDeviceFilter = address
+            profiles.bluetoothDeviceFilterName = name
+        }
     }
 
     private fun onPipChange(enabled: Boolean) {
@@ -364,47 +469,238 @@ class MainActivity : ComponentActivity() {
             onToggleMute = { HudOverlayManager.muteNearest(this) },
             onBlockNearest = { HudOverlayManager.blockNearest(this) },
             onReportHazard = { HudOverlayManager.reportHazard(this) },
+            onReportHazardType = { type ->
+                HudOverlayManager.reportSpecificHazard(this, type)
+                refreshCameraList()
+            },
             onToggleHud = { HudOverlayManager.toggle(this) },
             onContraCamDbChange = ::toggleContraCamDb,
             onSyncContraCam = ::syncContraCam,
             onAutoStartOnBluetoothChange = {
                 autoStartOnBluetooth = it
-                profiles.autoStartOnBluetooth = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.autoStartOnBluetooth = it }
             },
             onAutoStopOnBluetoothChange = {
                 autoStopOnBluetooth = it
-                profiles.autoStopOnBluetooth = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.autoStopOnBluetooth = it }
             },
             onBluetoothDeviceFilterChange = ::onBluetoothFilterChange,
             onBluetoothStopDelaySecondsChange = {
                 bluetoothStopDelaySeconds = it
-                profiles.bluetoothStopDelaySeconds = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.bluetoothStopDelaySeconds = it }
             },
             onEnterPip = { PipHelper.enterPipMode(this, DetectionState.state.value, profiles) },
             onPipEnabledChange = ::onPipChange,
             onPipAutoEnterChange = ::onPipAutoEnterChange,
             onLauncherBroadcastEnabledChange = {
                 launcherBroadcastEnabled = it
-                profiles.launcherBroadcastEnabled = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.launcherBroadcastEnabled = it }
             },
             onHeadUnitAutoStartChange = {
                 headUnitAutoStart = it
-                profiles.headUnitAutoStart = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.headUnitAutoStart = it }
             },
-            onWearCompanionEnabledChange = { profiles.wearCompanionEnabled = it },
-            onWearHapticProfileChange = { profiles.wearHapticProfile = it },
+            onWearCompanionEnabledChange = {
+                wearCompanionEnabled = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.wearCompanionEnabled = it }
+            },
+            onWearHapticProfileChange = {
+                wearHapticProfile = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.wearHapticProfile = it }
+            },
             onTestWearVibration = ::testWearVibration,
+            onQuickSettingChange = {
+                quickSetting = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.quickSetting = it }
+            },
+            onCaptureDistanceChange = {
+                captureDistanceKm = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.captureDistanceKm = it }
+            },
+            onTransportChange = {
+                transport = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.transport = it }
+            },
+            onHudEnabledChange = {
+                hudEnabled = it
+                HudOverlayManager.setHudEnabled(this, it)
+            },
+            onHudAutoHideChange = {
+                hudAutoHide = it
+                lifecycleScope.launch(Dispatchers.IO) {
+                    profiles.hudAutoHide = it
+                    HudOverlayManager.sync(this@MainActivity)
+                }
+            },
+            onOutputModeChange = {
+                outputMode = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.outputMode = it }
+            },
+            onSilentDuringCallChange = {
+                silentDuringCall = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.silentDuringCall = it }
+            },
+            onVoiceEngineChange = { engine ->
+                voiceEngine = engine
+                profiles.voiceEngine = engine
+            },
+            onVoicePhraseStyleChange = { style ->
+                voicePhraseStyle = style
+                profiles.voicePhraseStyle = style
+            },
+            onTtsSpeechRateChange = { rate ->
+                ttsSpeechRate = rate
+                profiles.ttsSpeechRate = rate
+            },
+            onSelectVoicePack = { packId ->
+                activeVoicePackId = packId
+                profiles.activeVoicePackId = packId
+                refreshVoicePacks()
+            },
+            onImportVoicePack = { voicePackPickerLauncher.launch(arrayOf("*/*")) },
+            onTestVoice = ::testVoice,
+            onImportDatabaseFile = { filePickerLauncher.launch(arrayOf("*/*")) },
+            onRestoreBundledDatabase = ::restoreBundledDatabase,
+            onUpdateUrlChange = ::onUpdateUrlChange,
+            onOfflineTilesEnabledChange = {
+                offlineTilesEnabled = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.offlineTilesEnabled = it }
+            },
+            onImportMbTilesFile = { mbTilesPickerLauncher.launch(arrayOf("*/*")) },
+            onClearMapCache = ::clearMapCache,
+            onDisconnectMbTiles = ::disconnectMbTiles,
         )
+
+    private fun importLocalDatabaseFile(uri: android.net.Uri) {
+        if (isManualUpdating) return
+        isManualUpdating = true
+        lifecycleScope.launch {
+            val helper = DatabaseImportHelper(applicationContext)
+            val result = helper.importFromUri(uri)
+            handleSyncResult(result)
+            isManualUpdating = false
+            refreshCameraList()
+        }
+    }
+
+    private fun restoreBundledDatabase() {
+        if (isManualUpdating) return
+        isManualUpdating = true
+        lifecycleScope.launch {
+            val syncEngine = DatabaseSyncEngine(applicationContext)
+            val result = syncEngine.restoreBundledDatabase()
+            handleSyncResult(result)
+            isManualUpdating = false
+            refreshCameraList()
+        }
+    }
+
+    private fun refreshOfflineMapStats() {
+        val mgr = SpeedCamApp.offlineTileManager(this)
+        activeMbTilesName = mgr.activeMbTiles?.name
+        tileCacheStats = mgr.getTileCacheStats()
+        offlineTilesEnabled = profiles.offlineTilesEnabled
+    }
+
+    private fun importMbTilesFile(uri: Uri) {
+        lifecycleScope.launch {
+            val result = SpeedCamApp.offlineTileManager(this@MainActivity).importMbTilesFromUri(uri)
+            Toast.makeText(this@MainActivity, result.second, Toast.LENGTH_LONG).show()
+            refreshOfflineMapStats()
+        }
+    }
+
+    private fun clearMapCache() {
+        SpeedCamApp.offlineTileManager(this).clearCache()
+        refreshOfflineMapStats()
+        Toast.makeText(this, "Кэш карты очищен", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun disconnectMbTiles() {
+        SpeedCamApp.offlineTileManager(this).clearActiveMbTiles()
+        refreshOfflineMapStats()
+        Toast.makeText(this, "Архив MBTiles отключен", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun refreshVoicePacks() {
+        val packs = voicePackManager.listInstalledPacks()
+        installedVoicePacks = packs.map { it.id to "${it.name} (${it.clipCount})" }
+        val active = packs.firstOrNull { it.id == activeVoicePackId }
+        activeVoicePackName = active?.let { "${it.name} (${it.clipCount} фраз)" }
+    }
+
+    private fun importVoicePackZip(uri: Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val (success, message) = voicePackManager.importPackFromUri(uri)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                if (success) {
+                    val packs = voicePackManager.listInstalledPacks()
+                    if (packs.isNotEmpty()) {
+                        val lastPack = packs.last()
+                        activeVoicePackId = lastPack.id
+                        profiles.activeVoicePackId = lastPack.id
+                        profiles.voiceEngine = VoiceEngine.AUDIO_PACK
+                        voiceEngine = VoiceEngine.AUDIO_PACK
+                    }
+                    refreshVoicePacks()
+                }
+            }
+        }
+    }
+
+    private fun testVoice() {
+        voiceAlertCoordinator.setOutputMode(outputMode)
+        voiceAlertCoordinator.engine = voiceEngine
+        voiceAlertCoordinator.phraseStyle = voicePhraseStyle
+        voiceAlertCoordinator.speechRate = ttsSpeechRate
+        voiceAlertCoordinator.activePackId = activeVoicePackId
+        voiceAlertCoordinator.speakTest()
+    }
+
+    private fun handleSyncResult(result: SyncResult) {
+        profiles.lastUpdateStatus = result.message
+        val nowStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+        profiles.lastUpdateCheckAt = nowStr
+        Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun onUpdateUrlChange(newUrl: String) {
+        updateUrl = newUrl
+        lifecycleScope.launch(Dispatchers.IO) {
+            profiles.updateUrl = newUrl
+        }
+    }
 
     private fun toggleContraCamDb(enabled: Boolean) {
         profiles.useContraCamDb = enabled
         useContraCamDb = enabled
         val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
         cameraStore.useContraCamDb = enabled
-        ServiceController.reloadDatabase(this)
-        refreshCameraList()
-        val mode = if (enabled) "ContraCam proprietary DB" else "Standard OSM DB"
-        Toast.makeText(this, "Active database: $mode", Toast.LENGTH_SHORT).show()
+
+        if (enabled) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                val contraCount = cameraStore.cameraDao.countBySource(CameraSource.CONTRACAM.ordinal)
+                if (contraCount == 0) {
+                    withContext(Dispatchers.Main) {
+                        val message = "База ContraCam не найдена. Начинаем автоматическую загрузку..."
+                        Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                        syncContraCam()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        val message = "Активирована база ContraCam ($contraCount камер)"
+                        Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                    }
+                }
+                ServiceController.reloadDatabase(this@MainActivity)
+                refreshCameraList()
+            }
+        } else {
+            ServiceController.reloadDatabase(this)
+            refreshCameraList()
+            Toast.makeText(this, "Активирована стандартная база OSM", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun syncContraCam() {
@@ -419,7 +715,7 @@ class MainActivity : ComponentActivity() {
             result.fold(
                 onSuccess = { count ->
                     profiles.contraCamCameraCount = count
-                    profiles.lastContraCamStatus = "Success ($count cameras)"
+                    profiles.lastContraCamStatus = "Успешно ($count камер)"
                     if (profiles.useContraCamDb) {
                         cameraStore.useContraCamDb = true
                         ServiceController.reloadDatabase(this@MainActivity)
@@ -428,16 +724,16 @@ class MainActivity : ComponentActivity() {
                     Toast
                         .makeText(
                             this@MainActivity,
-                            "ContraCam archive downloaded: $count cameras",
+                            "Архив ContraCam загружен: $count камер",
                             Toast.LENGTH_SHORT,
                         ).show()
                 },
                 onFailure = { error ->
-                    profiles.lastContraCamStatus = "Error: ${error.message}"
+                    profiles.lastContraCamStatus = "Ошибка: ${error.message}"
                     Toast
                         .makeText(
                             this@MainActivity,
-                            "ContraCam sync failed: ${error.message}",
+                            "Ошибка синхронизации ContraCam: ${error.message}",
                             Toast.LENGTH_LONG,
                         ).show()
                 },
@@ -458,6 +754,24 @@ class MainActivity : ComponentActivity() {
         pipAutoEnter = profiles.pipAutoEnter
         launcherBroadcastEnabled = profiles.launcherBroadcastEnabled
         headUnitAutoStart = profiles.headUnitAutoStart
+        detectionRunning = profiles.isEnabled
+        quickSetting = profiles.quickSetting
+        captureDistanceKm = profiles.captureDistanceKm
+        transport = profiles.transport
+        hudEnabled = profiles.hudEnabled
+        hudAutoHide = profiles.hudAutoHide
+        outputMode = profiles.outputMode
+        silentDuringCall = profiles.silentDuringCall
+        autoUpdateEnabled = profiles.autoUpdateEnabled
+        updateUrl = profiles.updateUrl
+        wearCompanionEnabled = profiles.wearCompanionEnabled
+        wearHapticProfile = profiles.wearHapticProfile
+        voiceEngine = profiles.voiceEngine
+        voicePhraseStyle = profiles.voicePhraseStyle
+        ttsSpeechRate = profiles.ttsSpeechRate
+        activeVoicePackId = profiles.activeVoicePackId
+        refreshVoicePacks()
+        refreshOfflineMapStats()
         refreshCameraList()
         HudOverlayManager.sync(this)
         if (profiles.isEnabled && fineLocationGranted) ServiceController.start(this)
@@ -481,7 +795,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setDetectionEnabled(enabled: Boolean) {
-        profiles.isEnabled = enabled
+        detectionRunning = enabled
+        lifecycleScope.launch(Dispatchers.IO) { profiles.isEnabled = enabled }
         if (enabled) {
             ServiceController.start(this)
         } else {
@@ -518,7 +833,7 @@ class MainActivity : ComponentActivity() {
             val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
             cameraStore.submitReport(report)
             HazardReportSyncWorker.triggerImmediate(applicationContext)
-            Toast.makeText(this@MainActivity, "Report queued for camera #${row.id}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@MainActivity, "Отметка поставлена в очередь для камеры #${row.id}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -530,7 +845,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
             cameraStore.hazardReportDao.clearSynced()
-            Toast.makeText(this@MainActivity, "Cleared synced hazard reports", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@MainActivity, "Синхронизированные отчеты очищены", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -602,10 +917,9 @@ class MainActivity : ComponentActivity() {
 private enum class Tab(
     val label: String,
 ) {
-    STATUS("Dashboard"),
-    MAP("Map"),
-    CAMERAS("Cameras"),
-    SETTINGS("Settings"),
+    STATUS("Спидометр"),
+    MAP("Карта"),
+    SETTINGS("Настройки"),
 }
 
 /** What the shell reads, grouped so the composable's signature stays reviewable. */
@@ -635,6 +949,25 @@ private data class ShellState(
     val wearHapticProfile: String = "MOTORCYCLE_HIGH",
     val connectedWatchCount: Int = 0,
     val connectedWatchName: String = "",
+    val isDetectionEnabled: Boolean = true,
+    val quickSetting: QuickSetting = QuickSetting.MAXIMUM_ALERTS,
+    val captureDistanceKm: Double = 0.0,
+    val transport: TransportProfile = TransportProfile.COMMON,
+    val hudEnabled: Boolean = true,
+    val hudAutoHide: Boolean = false,
+    val outputMode: OutputMode = OutputMode.STANDARD,
+    val silentDuringCall: Boolean = false,
+    val autoUpdateEnabled: Boolean = true,
+    val updateUrl: String = "",
+    val offlineTilesEnabled: Boolean = true,
+    val activeMbTilesName: String? = null,
+    val tileCacheStats: String = "",
+    val voiceEngine: VoiceEngine = VoiceEngine.TTS,
+    val voicePhraseStyle: VoicePhraseStyle = VoicePhraseStyle.FULL,
+    val ttsSpeechRate: Float = 1.0f,
+    val activeVoicePackId: String? = null,
+    val activeVoicePackName: String? = null,
+    val installedVoicePacks: List<Pair<String, String>> = emptyList(),
 )
 
 /** What the shell does, one callback per screen-level action. */
@@ -645,12 +978,16 @@ private data class ShellActions(
     val onResetHudPosition: () -> Unit,
     val onAutoUpdateChange: (Boolean) -> Unit,
     val onCheckForUpdates: () -> Unit,
+    val onImportDatabaseFile: () -> Unit,
+    val onRestoreBundledDatabase: () -> Unit,
+    val onUpdateUrlChange: (String) -> Unit,
     val onReportCamera: (CameraRow, HazardReportType, Int?, String?) -> Unit,
     val onSyncHazardOutbox: () -> Unit,
     val onClearSyncedReports: () -> Unit,
     val onToggleMute: () -> Unit,
     val onBlockNearest: () -> Unit,
     val onReportHazard: () -> Unit,
+    val onReportHazardType: (HazardReportType) -> Unit,
     val onToggleHud: () -> Unit,
     val onContraCamDbChange: (Boolean) -> Unit,
     val onSyncContraCam: () -> Unit,
@@ -666,6 +1003,23 @@ private data class ShellActions(
     val onWearCompanionEnabledChange: (Boolean) -> Unit,
     val onWearHapticProfileChange: (String) -> Unit,
     val onTestWearVibration: () -> Unit,
+    val onQuickSettingChange: (QuickSetting) -> Unit,
+    val onCaptureDistanceChange: (Double) -> Unit,
+    val onTransportChange: (TransportProfile) -> Unit,
+    val onHudEnabledChange: (Boolean) -> Unit,
+    val onHudAutoHideChange: (Boolean) -> Unit,
+    val onOutputModeChange: (OutputMode) -> Unit,
+    val onSilentDuringCallChange: (Boolean) -> Unit,
+    val onVoiceEngineChange: (VoiceEngine) -> Unit,
+    val onVoicePhraseStyleChange: (VoicePhraseStyle) -> Unit,
+    val onTtsSpeechRateChange: (Float) -> Unit,
+    val onSelectVoicePack: (String) -> Unit,
+    val onImportVoicePack: () -> Unit,
+    val onTestVoice: () -> Unit,
+    val onOfflineTilesEnabledChange: (Boolean) -> Unit,
+    val onImportMbTilesFile: () -> Unit,
+    val onClearMapCache: () -> Unit,
+    val onDisconnectMbTiles: () -> Unit,
     val onNavigateToTab: (Tab) -> Unit = {},
 )
 
@@ -676,20 +1030,32 @@ private fun AppShell(
     actions: ShellActions,
 ) {
     var tab by remember { mutableStateOf(Tab.STATUS) }
+    val context = LocalContext.current
+    val initialCenter =
+        remember(state.cameras) {
+            val (center, _) =
+                MapCenteringHelper.findInitialCenter(
+                    context = context,
+                    uiLat = state.ui.currentLat,
+                    uiLon = state.ui.currentLon,
+                    cameras = state.cameras,
+                )
+            center
+        }
     val mapState =
         remember {
             VectorMapState(
-                initialCenter =
-                    LatLon(
-                        state.ui.currentLat ?: 55.7558,
-                        state.ui.currentLon ?: 37.6173,
-                    ),
+                initialCenter = initialCenter,
                 initialZoom = 15.5f,
                 initialBearing = (state.ui.currentBearingDeg ?: 0.0).toFloat(),
                 initialFollowMode = MapFollowMode.FOLLOW_HEADING,
                 initialTheme = MapThemeMode.AUTOMOTIVE_DARK,
             )
         }
+
+    LaunchedEffect(state.offlineTilesEnabled) {
+        mapState.showTiles = state.offlineTilesEnabled
+    }
 
     Scaffold(
         topBar = {
@@ -748,10 +1114,12 @@ private fun ShellTabContent(
                         cameras = state.cameras,
                         sections = state.sections,
                         roads = emptyList(),
+                        blocked = state.blocked,
                     ),
                 actions =
                     VectorMapActions(
                         onBlockCamera = { cam -> actions.onUnblock(cam.toCameraRow()) },
+                        onUnblockCamera = { cam -> actions.onUnblock(cam.toCameraRow()) },
                         onReportCamera = { cam ->
                             actions.onReportCamera(
                                 cam.toCameraRow(),
@@ -760,26 +1128,8 @@ private fun ShellTabContent(
                                 "Reported from Vector Map",
                             )
                         },
-                    ),
-                modifier = modifier,
-            )
-
-        Tab.CAMERAS ->
-            CameraListScreen(
-                cameras = state.cameras,
-                blocked = state.blocked.map { it.lat to it.lon },
-                actions =
-                    CameraListActions(
-                        onUnblock = actions.onUnblock,
-                        onReportCamera = actions.onReportCamera,
-                        onViewOnMap = { row ->
-                            mapState.centerOn(
-                                target = LatLon(row.latitude, row.longitude),
-                                targetZoom = 16.5f,
-                                mode = MapFollowMode.FREE_ROAM,
-                            )
-                            mapState.inspectCamera(state.cameras.find { it.id == row.id })
-                            actions.onNavigateToTab(Tab.MAP)
+                        onReportHazardType = { type ->
+                            actions.onReportHazardType(type)
                         },
                     ),
                 modifier = modifier,
@@ -813,18 +1163,25 @@ private fun AppTopBar(
     TopAppBar(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(if (running) SpeedSafe else Color(0xFF64748B)),
+                Icon(
+                    painter = painterResource(R.drawable.ic_speedcam_logo),
+                    contentDescription = "SpeedCam Logo",
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(24.dp),
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "SpeedCam Radar",
+                    text = "SpeedCam",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier =
+                        Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(if (running) SpeedSafe else Color(0xFF64748B)),
                 )
             }
         },
@@ -847,7 +1204,7 @@ private fun AppTopBar(
                     }
                 Icon(
                     imageVector = Icons.Default.Layers,
-                    contentDescription = "Floating HUD",
+                    contentDescription = "Плавающий HUD",
                     tint = tint,
                 )
             }
@@ -871,7 +1228,6 @@ private fun AppBottomBar(
                             when (entry) {
                                 Tab.STATUS -> Icons.Default.Speed
                                 Tab.MAP -> Icons.Default.Map
-                                Tab.CAMERAS -> Icons.Default.PhotoCamera
                                 Tab.SETTINGS -> Icons.Default.Settings
                             },
                         contentDescription = entry.label,
@@ -886,20 +1242,20 @@ private fun AppBottomBar(
 private fun buildSettingsState(state: ShellState): SettingsState {
     val profiles = state.profiles
     return SettingsState(
-        enabled = profiles.isEnabled,
-        quickSetting = profiles.quickSetting,
-        captureDistanceKm = profiles.captureDistanceKm,
-        transport = profiles.transport,
-        hudEnabled = profiles.hudEnabled,
-        hudAutoHide = profiles.hudAutoHide,
+        enabled = state.isDetectionEnabled,
+        quickSetting = state.quickSetting,
+        captureDistanceKm = state.captureDistanceKm,
+        transport = state.transport,
+        hudEnabled = state.hudEnabled,
+        hudAutoHide = state.hudAutoHide,
         hudPermissionGranted = state.hudPermissionGranted,
-        outputMode = profiles.outputMode,
-        silentDuringCall = profiles.silentDuringCall,
+        outputMode = state.outputMode,
+        silentDuringCall = state.silentDuringCall,
         cameraCount = state.ui.cameraCount,
         sectionCount = state.ui.sectionCount,
         databaseBuiltAt = state.ui.databaseBuiltAt,
         dataSourceNote = DATA_SOURCE_NOTE,
-        autoUpdateEnabled = profiles.autoUpdateEnabled,
+        autoUpdateEnabled = state.autoUpdateEnabled,
         lastUpdateCheckAt = profiles.lastUpdateCheckAt,
         lastUpdateStatus = profiles.lastUpdateStatus,
         isUpdating = state.isUpdating,
@@ -926,30 +1282,42 @@ private fun buildSettingsState(state: ShellState): SettingsState {
         wearHapticProfile = state.wearHapticProfile,
         connectedWatchCount = state.connectedWatchCount,
         connectedWatchName = state.connectedWatchName,
+        updateUrl = state.updateUrl,
+        offlineTilesEnabled = state.offlineTilesEnabled,
+        activeMbTilesName = state.activeMbTilesName,
+        tileCacheStats = state.tileCacheStats,
+        voiceEngine = state.voiceEngine,
+        voicePhraseStyle = state.voicePhraseStyle,
+        ttsSpeechRate = state.ttsSpeechRate,
+        activeVoicePackId = state.activeVoicePackId,
+        activeVoicePackName = state.activeVoicePackName,
+        installedVoicePacks = state.installedVoicePacks,
     )
 }
 
-private fun buildSettingsActions(
-    context: Context,
-    profiles: ProfileStore,
-    actions: ShellActions,
-): SettingsActions =
+private fun buildSettingsActions(actions: ShellActions): SettingsActions =
     SettingsActions(
         onEnabledChange = actions.onEnableChange,
-        onQuickSettingChange = { profiles.quickSetting = it },
-        onCaptureDistanceChange = { profiles.captureDistanceKm = it },
-        onTransportChange = { profiles.transport = it },
-        onHudEnabledChange = { HudOverlayManager.setHudEnabled(context, it) },
-        onHudAutoHideChange = {
-            profiles.hudAutoHide = it
-            HudOverlayManager.sync(context)
-        },
+        onQuickSettingChange = actions.onQuickSettingChange,
+        onCaptureDistanceChange = actions.onCaptureDistanceChange,
+        onTransportChange = actions.onTransportChange,
+        onHudEnabledChange = actions.onHudEnabledChange,
+        onHudAutoHideChange = actions.onHudAutoHideChange,
         onRequestHudPermission = actions.onRequestHudPermission,
         onResetHudPosition = actions.onResetHudPosition,
-        onOutputModeChange = { profiles.outputMode = it },
-        onSilentDuringCallChange = { profiles.silentDuringCall = it },
+        onOutputModeChange = actions.onOutputModeChange,
+        onSilentDuringCallChange = actions.onSilentDuringCallChange,
+        onVoiceEngineChange = actions.onVoiceEngineChange,
+        onVoicePhraseStyleChange = actions.onVoicePhraseStyleChange,
+        onTtsSpeechRateChange = actions.onTtsSpeechRateChange,
+        onSelectVoicePack = actions.onSelectVoicePack,
+        onImportVoicePack = actions.onImportVoicePack,
+        onTestVoice = actions.onTestVoice,
         onAutoUpdateChange = actions.onAutoUpdateChange,
         onCheckForUpdates = actions.onCheckForUpdates,
+        onImportDatabaseFile = actions.onImportDatabaseFile,
+        onRestoreBundledDatabase = actions.onRestoreBundledDatabase,
+        onUpdateUrlChange = actions.onUpdateUrlChange,
         onSyncHazardOutbox = actions.onSyncHazardOutbox,
         onClearSyncedReports = actions.onClearSyncedReports,
         onContraCamDbChange = actions.onContraCamDbChange,
@@ -965,6 +1333,10 @@ private fun buildSettingsActions(
         onWearCompanionEnabledChange = actions.onWearCompanionEnabledChange,
         onWearHapticProfileChange = actions.onWearHapticProfileChange,
         onTestWearVibration = actions.onTestWearVibration,
+        onOfflineTilesEnabledChange = actions.onOfflineTilesEnabledChange,
+        onImportMbTilesFile = actions.onImportMbTilesFile,
+        onClearMapCache = actions.onClearMapCache,
+        onDisconnectMbTiles = actions.onDisconnectMbTiles,
     )
 
 @Composable
@@ -973,10 +1345,9 @@ private fun SettingsTab(
     actions: ShellActions,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     SettingsScreen(
         state = buildSettingsState(state),
-        actions = buildSettingsActions(context, state.profiles, actions),
+        actions = buildSettingsActions(actions),
         modifier = modifier,
     )
 }

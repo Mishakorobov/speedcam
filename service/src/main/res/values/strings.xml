@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="channel_detection_name">Camera detection</string>
-    <string name="channel_detection_description">Shows while camera detection is active</string>
-    <string name="notification_title">SpeedCam is running</string>
-    <string name="notification_text">Monitoring for speed cameras</string>
-    <string name="notification_alert">Camera in %1$d m, limit %2$d km/h</string>
-    <string name="notification_alert_unknown_limit">Camera in %1$d m, limit unknown</string>
-    <string name="notification_section_entered">Average-speed zone, limit %1$d km/h</string>
-    <string name="notification_section_exited">Average speed %1$d km/h (limit %2$d km/h)</string>
-    <string name="notification_gps_lost">GPS signal lost</string>
-    <string name="notification_gps_recovered">GPS signal restored</string>
+    <string name="channel_detection_name">Обнаружение дорожных камер</string>
+    <string name="channel_detection_description">Отображается во время активной работы радар-детектора</string>
+    <string name="notification_title">SpeedCam активен</string>
+    <string name="notification_text">Мониторинг дорожных камер и опасностей</string>
+    <string name="notification_alert">Камера через %1$d м, ограничение %2$d км/ч</string>
+    <string name="notification_alert_unknown_limit">Камера через %1$d м</string>
+    <string name="notification_section_entered">Зона контроля средней скорости, ограничение %1$d км/ч</string>
+    <string name="notification_section_exited">Средняя скорость %1$d км/ч (ограничение %2$d км/ч)</string>
+    <string name="notification_gps_lost">Потерян сигнал GPS</string>
+    <string name="notification_gps_recovered">Сигнал GPS восстановлен</string>
 </resources>

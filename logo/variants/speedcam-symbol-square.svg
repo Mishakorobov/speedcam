@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"><title>SpeedCam</title><g transform="translate(-4.35 -3.54) scale(1.034)">
+  <title id="title-sym-master">SpeedCam Symbol</title>
+  <path fill="#0F172A" d="M 225.7 92.4 A 104 104 0 0 1 163.6 225.7 A 64 64 0 0 0 158.9 164.8 A 48 48 0 0 0 175.8 123.8 A 64 64 0 0 1 225.7 92.4 Z"/>
+  <path fill="#0F172A" d="M 109.9 230.4 A 104 104 0 0 1 25.6 109.9 A 64 64 0 0 0 80.7 136.3 A 48 48 0 0 0 107.7 171.5 A 64 64 0 0 1 109.9 230.4 Z"/>
+  <path fill="#0F172A" d="M 48.3 61.2 A 104 104 0 0 1 194.8 48.3 A 64 64 0 0 0 144.4 82.9 A 48 48 0 0 0 100.5 88.7 A 64 64 0 0 1 48.3 61.2 Z"/>
+  <path fill="#0F172A" fill-rule="evenodd" d="M 128 96 A 32 32 0 1 1 127.9 96 Z M 128 112 A 16 16 0 1 0 127.9 112 Z"/>
+</g></svg>

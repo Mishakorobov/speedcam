@@ -50,6 +50,7 @@ class VectorMapState(
     var themeMode by mutableStateOf(initialTheme)
 
     // Visual layer toggles
+    var showTiles by mutableStateOf(true)
     var showDistanceRings by mutableStateOf(true)
     var showRoads by mutableStateOf(true)
     var showCameraCones by mutableStateOf(true)
@@ -60,7 +61,16 @@ class VectorMapState(
     // Selection
     var inspectedCamera by mutableStateOf<Camera?>(null)
 
+    // Dynamic auto-centering tracking
+    var hasAutoCentered by mutableStateOf(false)
+
     val center: LatLon get() = LatLon(centerLat, centerLon)
+
+    fun isAtDefaultCenter(): Boolean {
+        val latDiff = kotlin.math.abs(centerLat - 55.7558)
+        val lonDiff = kotlin.math.abs(centerLon - 37.6173)
+        return latDiff < 1e-4 && lonDiff < 1e-4
+    }
 
     /**
      * Updates vehicle telemetry and adjusts camera position if follow mode is active.

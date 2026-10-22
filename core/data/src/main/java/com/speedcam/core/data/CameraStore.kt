@@ -73,7 +73,8 @@ class CameraStore(
 
     /** How many cameras are loaded, for the settings screen. */
     suspend fun cameraCount(): Int {
-        val active = if (useContraCamDb) 1 else 0
+        val hasContra = runCatching { database.cameraDao().hasContraCamCameras() }.getOrDefault(false)
+        val active = if (useContraCamDb && hasContra) 1 else 0
         return runCatching { database.cameraDao().countActive(active) }.getOrDefault(0)
     }
 
@@ -86,10 +87,13 @@ class CameraStore(
      *
      * Suspend because Room refuses main-thread access and the UI calls this on resume.
      */
-    suspend fun allCameras(): List<Camera> =
-        runCatching { database.cameraDao().allCamerasActive(if (useContraCamDb) 1 else 0) }
+    suspend fun allCameras(): List<Camera> {
+        val hasContra = runCatching { database.cameraDao().hasContraCamCameras() }.getOrDefault(false)
+        val active = if (useContraCamDb && hasContra) 1 else 0
+        return runCatching { database.cameraDao().allCamerasActive(active) }
             .getOrDefault(emptyList())
             .map(CameraMappers::toDomain)
+    }
 
     /** The override set currently in force. */
     @Volatile
@@ -138,6 +142,32 @@ class CameraStore(
                 ),
             )
         refreshOverrides()
+    }
+
+    /** Adds a user-reported temporary hazard or mobile camera. */
+    suspend fun addCamera(
+        lat: Double,
+        lon: Double,
+        kind: com.speedcam.core.detect.CameraKind = com.speedcam.core.detect.CameraKind.MOBILE,
+        limitKmh: Int? = null,
+        note: String? = null,
+        created: String? = null,
+    ) {
+        val entity =
+            CameraEntity(
+                source = com.speedcam.core.detect.CameraSource.MANUAL.ordinal,
+                externalId = "manual-${System.currentTimeMillis()}-${(100..999).random()}",
+                lat = lat,
+                lon = lon,
+                limitKmh = limitKmh,
+                kind = kind.ordinal,
+                facingDeg = null,
+                dirCount = 2,
+                operator = null,
+                sourceDetail = note,
+                checkDate = created,
+            )
+        database.cameraDao().upsertAll(listOf(entity))
     }
 
     /**

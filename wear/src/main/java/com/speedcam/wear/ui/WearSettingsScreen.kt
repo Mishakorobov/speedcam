@@ -99,7 +99,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
+                contentDescription = "Назад",
                 tint = Color.White,
                 modifier = Modifier.size(16.dp),
             )

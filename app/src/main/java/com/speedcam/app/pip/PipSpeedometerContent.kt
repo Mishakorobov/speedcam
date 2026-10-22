@@ -33,6 +33,7 @@ import com.speedcam.app.ui.components.getCameraIcon
 import com.speedcam.app.ui.theme.SpeedDanger
 import com.speedcam.app.ui.theme.SpeedSafe
 import com.speedcam.app.ui.theme.SpeedWarning
+import com.speedcam.app.util.toRussianBadge
 import com.speedcam.core.detect.CameraKind
 import com.speedcam.service.DetectionUiState
 import com.speedcam.service.HazardView
@@ -193,13 +194,13 @@ private fun PipSpecsSectionView(section: SectionUiState) {
         SpeedLimitSign(limitKmh = section.limitKmh, size = 32.dp)
         Spacer(modifier = Modifier.height(2.dp))
         Text(
-            text = "AVG ${section.averageKmh.roundToInt()} km/h",
+            text = "СРЕДНЯЯ ${section.averageKmh.roundToInt()} км/ч",
             color = if (section.overLimit) SpeedDanger else Color.White,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = "${formatPipDistance(section.remainingM)} left",
+            text = "осталось ${formatPipDistance(section.remainingM)}",
             color = Color(0xFF94A3B8),
             fontSize = 8.sp,
         )
@@ -224,13 +225,13 @@ private fun PipClearRoadView(
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "ROAD CLEAR",
+                text = "ДОРОГА ЧИСТА",
                 color = SpeedSafe,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = if (hasFix) "GPS ACTIVE" else "SEARCHING GPS",
+                text = if (hasFix) "GPS АКТИВЕН" else "ПОИСК GPS",
                 color = Color(0xFF94A3B8),
                 fontSize = 7.sp,
             )
@@ -243,7 +244,7 @@ private fun PipClearRoadView(
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "RADAR OFF",
+                text = "РАДАР ВЫКЛ",
                 color = Color(0xFF94A3B8),
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
@@ -264,26 +265,19 @@ internal fun resolvePipSpeedColor(
         else -> Color.White
     }
 
-internal fun formatCameraKindLabel(kind: CameraKind): String =
-    when (kind) {
-        CameraKind.RED_LIGHT -> "RED LIGHT"
-        CameraKind.AVERAGE_ENTRY -> "SPECS START"
-        CameraKind.AVERAGE_EXIT -> "SPECS END"
-        CameraKind.MOBILE -> "MOBILE"
-        CameraKind.COMPLEX -> "COMPLEX"
-        CameraKind.DUMMY -> "DUMMY"
-        CameraKind.FIXED -> "SPEED CAM"
-        CameraKind.UNKNOWN -> "HAZARD"
-    }
+internal fun formatCameraKindLabel(kind: CameraKind): String = kind.toRussianBadge()
 
 internal fun formatPipDistance(
     distanceM: Double,
-    locale: Locale = Locale.US,
+    locale: Locale = Locale.getDefault(),
 ): String {
     val rounded = distanceM.roundToInt()
+    val isEnglish = locale == Locale.US || locale == Locale.ENGLISH || locale == Locale.UK
     return if (rounded >= 1000) {
-        String.format(locale, "%.1f km", rounded / 1000.0)
+        val unit = if (isEnglish) "km" else "км"
+        String.format(locale, "%.1f %s", rounded / 1000.0, unit)
     } else {
-        "$rounded m"
+        val unit = if (isEnglish) "m" else "м"
+        "$rounded $unit"
     }
 }

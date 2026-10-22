@@ -5,9 +5,7 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
 import android.util.Log
-import android.view.GestureDetector
 import android.view.Gravity
-import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -22,6 +20,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.doOnLayout
 import com.speedcam.app.hud.ui.HudContent
+import com.speedcam.core.data.HazardReportType
 import com.speedcam.service.ProfileStore
 import kotlin.math.hypot
 import kotlin.math.roundToInt
@@ -38,6 +37,7 @@ class HudOverlay(
     private val onBlockNearest: (() -> Unit)? = null,
     private val onMuteNearest: (() -> Unit)? = null,
     private val onReportHazard: (() -> Unit)? = null,
+    private val onReportSpecificHazard: ((HazardReportType) -> Unit)? = null,
 ) {
     private val lifecycleOwner = HudLifecycleOwner()
     private val isDraggingState = mutableStateOf(false)
@@ -152,6 +152,7 @@ class HudOverlay(
         val profiles = ProfileStore(context)
         val compose =
             ComposeView(context).apply {
+                isClickable = true
                 setContent {
                     CompositionLocalProvider(
                         LocalDensity provides displayDensity,
@@ -160,6 +161,10 @@ class HudOverlay(
                         HudContent(
                             isDragging = isDraggingState.value,
                             autoDimOnClearRoad = profiles.hudAutoHide,
+                            onMuteNearest = onMuteNearest,
+                            onBlockNearest = onBlockNearest,
+                            onReportHazard = onReportHazard,
+                            onQuickReport = onReportSpecificHazard,
                         )
                     }
                 }
@@ -181,15 +186,6 @@ class HudOverlay(
                 context = context,
                 onDragDelta = ::onDragDelta,
                 onCommitDrag = ::persistPosition,
-                onTap = { onMuteNearest?.invoke() },
-                onDoubleTap = {
-                    rootLayout.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                    onReportHazard?.invoke()
-                },
-                onLongPress = {
-                    rootLayout.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                    onBlockNearest?.invoke()
-                },
                 onDraggingChanged = { isDraggingState.value = it },
             )
         compose.setOnTouchListener(touchListener)
@@ -235,14 +231,14 @@ class HudOverlay(
 
 /**
  * Handles automotive touch interactions on the floating HUD overlay.
+ *
+ * Taps fall through to Compose to trigger 1-tap crowdsource reporting buttons,
+ * while dragging distances exceeding touch slop engage window repositioning.
  */
 private class HudTouchListener(
     context: Context,
     private val onDragDelta: (dx: Int, dy: Int) -> Unit,
     private val onCommitDrag: () -> Unit,
-    private val onTap: () -> Unit,
-    private val onDoubleTap: () -> Unit,
-    private val onLongPress: () -> Unit,
     private val onDraggingChanged: (Boolean) -> Unit,
 ) : View.OnTouchListener {
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
@@ -252,31 +248,10 @@ private class HudTouchListener(
     private var lastY = 0f
     private var isDragging = false
 
-    private val gestureDetector =
-        GestureDetector(
-            context,
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                    onTap()
-                    return true
-                }
-
-                override fun onDoubleTap(e: MotionEvent): Boolean {
-                    onDoubleTap()
-                    return true
-                }
-
-                override fun onLongPress(e: MotionEvent) {
-                    onLongPress()
-                }
-            },
-        )
-
     override fun onTouch(
         v: View,
         event: MotionEvent,
     ): Boolean {
-        gestureDetector.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 initialX = event.rawX
@@ -284,6 +259,7 @@ private class HudTouchListener(
                 lastX = event.rawX
                 lastY = event.rawY
                 isDragging = false
+                return false
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx = event.rawX - lastX
@@ -293,20 +269,27 @@ private class HudTouchListener(
                     if (!isDragging) {
                         isDragging = true
                         onDraggingChanged(true)
+                        val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+                        v.onTouchEvent(cancel)
+                        cancel.recycle()
                     }
                     onDragDelta(dx.roundToInt(), dy.roundToInt())
                     lastX = event.rawX
                     lastY = event.rawY
+                    return true
                 }
+                return isDragging
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (isDragging) {
                     onCommitDrag()
                     isDragging = false
                     onDraggingChanged(false)
+                    return true
                 }
+                return false
             }
         }
-        return true
+        return false
     }
 }

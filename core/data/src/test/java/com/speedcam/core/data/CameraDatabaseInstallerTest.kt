@@ -299,4 +299,20 @@ class CameraDatabaseInstallerTest {
         assertTrue(CameraDatabaseInstaller.looksLikeSqliteDatabase(target))
         assertFalse(installer.hasSupersededBackup())
     }
+
+    @Test
+    fun `forceInstallFromAssets overwrites existing database with fresh asset copy`() {
+        val real = realDatabase()
+        val installer = installerFrom(real)
+        installer.installIfNeeded()
+        assertTrue(CameraDatabaseInstaller.looksLikeSqliteDatabase(target))
+
+        // Modify target to simulate corrupted database
+        target.writeText("simulated corrupted target")
+
+        val result = installer.forceInstallFromAssets()
+        assertTrue(result.isSuccess)
+        assertEquals(DatabaseInstallOutcome.REPAIRED, result.getOrNull())
+        assertTrue(CameraDatabaseInstaller.looksLikeSqliteDatabase(target))
+    }
 }

@@ -2,8 +2,11 @@ package com.speedcam.tools.import
 
 import com.speedcam.core.detect.Camera
 import com.speedcam.core.detect.SectionRecord
+import com.speedcam.tools.import.db.DatabaseVerifier
 import com.speedcam.tools.import.db.DatabaseWriter
+import com.speedcam.tools.import.db.ManifestGenerator
 import com.speedcam.tools.import.source.BoundingBox
+import com.speedcam.tools.import.source.ContraCamParser
 import com.speedcam.tools.import.source.OverpassClient
 import com.speedcam.tools.import.source.SpeedCamParser
 import com.speedcam.tools.import.source.pbf.PbfImporter
@@ -24,6 +27,36 @@ fun main(args: Array<String>) {
         println(ImportOptions.USAGE)
         return
     }
+
+    if (options.verify != null) {
+        val dbFile = File(options.verify)
+        val manifestFile = options.manifest?.let { File(it) }
+        val result = DatabaseVerifier.verify(dbFile, manifestFile)
+        println(result.formatReport())
+        if (!result.ok) {
+            exitProcess(1)
+        }
+        return
+    }
+
+    // Standalone manifest generation for an existing database
+    if (options.hasNoSources && options.output != null && options.manifest != null) {
+        val dbFile = File(options.output)
+        val manifestFile = File(options.manifest)
+        val manifest =
+            ManifestGenerator.writeManifest(
+                dbFile = dbFile,
+                manifestFile = manifestFile,
+                version = options.version,
+                downloadUrl = options.downloadUrl,
+            )
+        println(
+            "Generated manifest for ${dbFile.name} at ${manifestFile.absolutePath}: " +
+                "version=${manifest.version}, sha256=${manifest.sha256}, cameras=${manifest.cameraCount}",
+        )
+        return
+    }
+
     val outputPath =
         options.output ?: run {
             System.err.println("error: --output is required\n")
@@ -44,6 +77,13 @@ private fun runImport(
     for (file in options.speedcamFiles) {
         System.err.println("Parsing SpeedCam: ${file.name}")
         val parsed = SpeedCamParser.parse(file)
+        System.err.println("  ${parsed.size} records")
+        cameras += parsed
+    }
+
+    for (file in options.contracamFiles) {
+        System.err.println("Parsing ContraCam: ${file.name}")
+        val parsed = ContraCamParser.parse(file)
         System.err.println("  ${parsed.size} records")
         cameras += parsed
     }
@@ -90,6 +130,20 @@ private fun runImport(
     println("Wrote ${output.absolutePath} (${"%.1f".format(sizeMb)} MB)")
     println("${merged.size} cameras, ${sections.size} average-speed sections.")
     println("OpenStreetMap data is (c) OpenStreetMap contributors, licensed ODbL 1.0.")
+
+    if (options.manifest != null) {
+        val manifestFile = File(options.manifest)
+        val manifest =
+            ManifestGenerator.writeManifest(
+                dbFile = output,
+                manifestFile = manifestFile,
+                version = options.version,
+                downloadUrl = options.downloadUrl,
+                cameraCount = merged.size,
+                sectionCount = sections.size,
+            )
+        println("Generated manifest at ${manifestFile.absolutePath} (sha256: ${manifest.sha256})")
+    }
 }
 
 private fun fetchOverpass(
@@ -141,13 +195,21 @@ private fun writeDatabase(
 private data class Options(
     val help: Boolean = false,
     val speedcamFiles: List<File> = emptyList(),
+    val contracamFiles: List<File> = emptyList(),
     val areas: List<String> = emptyList(),
     val bboxes: List<BoundingBox> = emptyList(),
     val pbfFiles: List<File> = emptyList(),
     val output: String? = null,
+    val manifest: String? = null,
+    val downloadUrl: String? = null,
+    val version: String? = null,
+    val verify: String? = null,
 ) {
+    val hasNoSources: Boolean
+        get() = speedcamFiles.isEmpty() && contracamFiles.isEmpty() && areas.isEmpty() && bboxes.isEmpty() && pbfFiles.isEmpty()
+
     val isEmpty: Boolean
-        get() = speedcamFiles.isEmpty() && areas.isEmpty() && bboxes.isEmpty() && pbfFiles.isEmpty() && output == null
+        get() = hasNoSources && output == null && verify == null && manifest == null
 }
 
 private fun parseArgs(args: Array<String>): Options {
@@ -163,6 +225,10 @@ private fun parseArgs(args: Array<String>): Options {
                 val path = args.getOrNull(++i) ?: error("--speedcam needs a file path")
                 options = options.copy(speedcamFiles = options.speedcamFiles + File(path))
             }
+            "--${ImportOptions.KEY_CONTRACAM}" -> {
+                val path = args.getOrNull(++i) ?: error("--contracam needs a file path")
+                options = options.copy(contracamFiles = options.contracamFiles + File(path))
+            }
             "--${ImportOptions.KEY_OVERPASS}" -> {
                 val area = args.getOrNull(++i) ?: error("--osm-area needs a value")
                 require(area in ImportOptions.Areas.ALL) {
@@ -174,9 +240,21 @@ private fun parseArgs(args: Array<String>): Options {
                 val text = args.getOrNull(++i) ?: error("--osm-bbox needs south,west,north,east")
                 options = options.copy(bboxes = options.bboxes + ImportOptions.parseBbox(text))
             }
-            "--osm-pbf" -> {
+            "--${ImportOptions.KEY_PBF}" -> {
                 val path = args.getOrNull(++i) ?: error("--osm-pbf needs a file path")
                 options = options.copy(pbfFiles = options.pbfFiles + File(path))
+            }
+            "--${ImportOptions.KEY_MANIFEST}" -> {
+                options = options.copy(manifest = args.getOrNull(++i) ?: error("--manifest needs a file path"))
+            }
+            "--${ImportOptions.KEY_DOWNLOAD_URL}" -> {
+                options = options.copy(downloadUrl = args.getOrNull(++i) ?: error("--download-url needs a URL"))
+            }
+            "--${ImportOptions.KEY_VERSION}" -> {
+                options = options.copy(version = args.getOrNull(++i) ?: error("--version needs a version string"))
+            }
+            "--${ImportOptions.KEY_VERIFY}" -> {
+                options = options.copy(verify = args.getOrNull(++i) ?: error("--verify needs a database file path"))
             }
             else -> error("unknown argument: $arg")
         }

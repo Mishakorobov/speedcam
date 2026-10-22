@@ -21,6 +21,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$curl = if (Get-Command curl.exe -ErrorAction SilentlyContinue) { 'curl.exe' } else { 'curl' }
 $base = 'https://download.geofabrik.de/russia'
 
 # Name -> approximate size in MB from the Geofabrik index. Used as a cheap
@@ -51,7 +52,7 @@ function Get-RemoteMd5([string]$name) {
     # native command exiting non-zero raises, so the probe is isolated and retries. Returning
     # $null means "unknown", which the caller treats as "keep what we have".
     try {
-        $out = & curl.exe -sS -L --retry 3 --retry-delay 3 --connect-timeout 20 --max-time 90 $url 2>$null
+        $out = & $curl -sS -L --retry 3 --retry-delay 3 --connect-timeout 20 --max-time 90 $url 2>$null
         if (-not $out) { return $null }
         return (($out -split '\s+')[0]).ToLower()
     } catch {
@@ -125,7 +126,7 @@ function Get-District([string]$name, [string]$md5) {
         # are fetched back to back, and a 2 KB/s floor killed transfers that were still
         # making progress.
         try {
-            & curl.exe -sS -L --fail $(if ($canResume) { '-C -' } else { '' }) `
+            & $curl -sS -L --fail $(if ($canResume) { '-C -' } else { '' }) `
                 --retry 3 --retry-delay 5 --speed-time 180 --speed-limit 512 --max-time 7200 `
                 -o $target "$base/$file" 2>&1 | Out-Null
         } catch {

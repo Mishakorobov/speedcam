@@ -209,4 +209,24 @@ class CameraFilterEngineTest {
         val allFiltered = CameraFilterEngine.apply(list, CameraFilter(region = CameraRegion.ALL))
         assertEquals(3, allFiltered.size)
     }
+
+    @Test
+    fun `sorting by distance orders cameras by proximity to reference location`() {
+        val userLoc = LatLon(55.7500, 37.6100)
+        val closeCam = camera(101, lat = 55.7510, lon = 37.6110)
+        val midCam = camera(102, lat = 55.7600, lon = 37.6200)
+        val farCam = camera(103, lat = 55.8000, lon = 37.7000)
+
+        val rows =
+            CameraFilterEngine.apply(
+                cameras = listOf(farCam, closeCam, midCam),
+                filter = CameraFilter(),
+                referenceLocation = userLoc,
+                sortByDistance = true,
+            )
+
+        assertEquals(listOf(101L, 102L, 103L), rows.map { it.id })
+        assertTrue((rows[0].distanceM ?: 0.0) < (rows[1].distanceM ?: 0.0))
+        assertTrue((rows[1].distanceM ?: 0.0) < (rows[2].distanceM ?: 0.0))
+    }
 }

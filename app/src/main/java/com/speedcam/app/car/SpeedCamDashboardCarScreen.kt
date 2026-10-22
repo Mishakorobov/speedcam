@@ -68,25 +68,25 @@ class SpeedCamDashboardCarScreen(
         return PaneTemplate
             .Builder(paneBuilder.build())
             .setHeaderAction(Action.APP_ICON)
-            .setTitle("SpeedCam Radar")
+            .setTitle("Радар SpeedCam")
             .setActionStrip(actionStrip)
             .build()
     }
 
     private fun buildSpeedRow(state: DetectionUiState): Row {
-        val speedStr = if (state.running) "${state.speedKmh.roundToInt()} km/h" else "Stopped"
+        val speedStr = if (state.running) "${state.speedKmh.roundToInt()} км/ч" else "Стоит"
         val limit = state.activeSection?.limitKmh ?: state.nearest?.limitKmh ?: 0
-        val limitDesc = if (limit > 0) "Limit: $limit km/h" else "No limit"
+        val limitDesc = if (limit > 0) "Лимит: $limit км/ч" else "Без лимита"
         val statusDesc =
             when {
-                state.overLimit -> "OVER SPEED LIMIT!"
-                state.hasFix -> "GPS Active"
-                else -> "Searching GPS..."
+                state.overLimit -> "ПРЕВЫШЕНИЕ СКОРОСТИ!"
+                state.hasFix -> "GPS активен"
+                else -> "Поиск GPS..."
             }
 
         return Row
             .Builder()
-            .setTitle("Speed: $speedStr")
+            .setTitle("Скорость: $speedStr")
             .addText("$limitDesc · $statusDesc")
             .build()
     }
@@ -100,29 +100,29 @@ class SpeedCamDashboardCarScreen(
                 val avgSpeed = activeSection.averageKmh.roundToInt()
                 Row
                     .Builder()
-                    .setTitle("SPECS Zone · Limit ${activeSection.limitKmh} km/h")
-                    .addText("Average $avgSpeed km/h · $remaining remaining")
+                    .setTitle("Зона КСС · Лимит ${activeSection.limitKmh} км/ч")
+                    .addText("Средняя $avgSpeed км/ч · осталось $remaining")
                     .build()
             }
             nearest != null -> {
-                val limitStr = nearest.limitKmh?.let { "$it km/h" } ?: "No limit"
-                val dirStr = if (nearest.behind) "Behind" else "Ahead"
+                val limitStr = nearest.limitKmh?.let { "$it км/ч" } ?: "Без лимита"
+                val dirStr = if (nearest.behind) "В спину" else "Впереди"
                 val distStr = formatPipDistance(nearest.distanceM)
                 Row
                     .Builder()
                     .setTitle("${formatCameraKindLabel(nearest.kind)} · $distStr")
-                    .addText("Limit: $limitStr · $dirStr")
+                    .addText("Лимит: $limitStr · $dirStr")
                     .build()
             }
             else -> {
                 Row
                     .Builder()
-                    .setTitle("Road Clear")
+                    .setTitle("Дорога свободна")
                     .addText(
                         if (state.running) {
-                            "SpeedCam radar active · No hazards nearby"
+                            "Радар SpeedCam активен · Опасностей рядом нет"
                         } else {
-                            "Radar is paused"
+                            "Радар на паузе"
                         },
                     ).build()
             }
@@ -130,19 +130,19 @@ class SpeedCamDashboardCarScreen(
     }
 
     private fun buildStatusRow(state: DetectionUiState): Row {
-        val runStatus = if (state.running) "Active" else "Paused"
-        val muteStatus = if (state.muted) "Muted" else "Sound Active"
+        val runStatus = if (state.running) "Активен" else "На паузе"
+        val muteStatus = if (state.muted) "Без звука" else "Звук включен"
         return Row
             .Builder()
-            .setTitle("Radar: $runStatus")
-            .addText("Alerts: $muteStatus · ${state.cameraCount} cameras loaded")
+            .setTitle("Радар: $runStatus")
+            .addText("Оповещения: $muteStatus · загружено ${state.cameraCount} камер")
             .build()
     }
 
     private fun buildToggleAction(state: DetectionUiState): Action =
         Action
             .Builder()
-            .setTitle(if (state.running) "Stop Radar" else "Start Radar")
+            .setTitle(if (state.running) "Остановить радар" else "Запустить радар")
             .setOnClickListener {
                 val willRun = !state.running
                 if (willRun) {
@@ -155,7 +155,7 @@ class SpeedCamDashboardCarScreen(
 
     private fun buildMuteAction(state: DetectionUiState): Action {
         val iconRes = if (state.muted) R.drawable.ic_pip_volume_up else R.drawable.ic_pip_volume_off
-        val title = if (state.muted) "Unmute" else "Mute"
+        val title = if (state.muted) "Вкл. звук" else "Выкл. звук"
         return Action
             .Builder()
             .setTitle(title)

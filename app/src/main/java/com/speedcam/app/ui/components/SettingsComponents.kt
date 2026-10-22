@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -18,9 +19,15 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -81,6 +88,9 @@ fun SettingsSectionCard(
 
 /**
  * Accessible Toggle Row with primary label, secondary helper text, and accessible touch target.
+ *
+ * The entire row is interactive via [Modifier.toggleable], providing a minimum 48dp touch target
+ * with standard ripple feedback, preventing missed clicks on the small Switch widget.
  */
 @Composable
 fun SettingsToggleItem(
@@ -89,12 +99,19 @@ fun SettingsToggleItem(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .clip(RoundedCornerShape(8.dp))
+                .toggleable(
+                    value = checked,
+                    enabled = enabled,
+                    role = Role.Switch,
+                    onValueChange = onCheckedChange,
+                ).padding(vertical = 8.dp, horizontal = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -103,18 +120,30 @@ fun SettingsToggleItem(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
+                color =
+                    if (enabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    },
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color =
+                        if (enabled) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                        },
                 )
             }
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
+            enabled = enabled,
         )
     }
 }
@@ -125,17 +154,24 @@ data class SliderItemState(
     val valueLabel: String,
     val value: Float,
     val valueRange: ClosedFloatingPointRange<Float> = 0f..3f,
+    val formatValueLabel: ((Float) -> String)? = null,
 )
 
 /**
  * Slider Row for numeric settings like warning distance.
+ *
+ * Uses local state for 60/120 FPS fluid dragging without recomposition stalls,
+ * and defers persistent writes until drag gesture finishes.
  */
 @Composable
 fun SettingsSliderItem(
     item: SliderItemState,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
+    onValueChangeFinished: ((Float) -> Unit)? = null,
 ) {
+    var sliderValue by remember(item.value) { mutableFloatStateOf(item.value) }
+
     Column(
         modifier =
             modifier
@@ -152,8 +188,9 @@ fun SettingsSliderItem(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
             )
+            val currentLabel = item.formatValueLabel?.invoke(sliderValue) ?: item.valueLabel
             Text(
-                text = item.valueLabel,
+                text = currentLabel,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
@@ -161,8 +198,16 @@ fun SettingsSliderItem(
         }
         Spacer(modifier = Modifier.height(4.dp))
         Slider(
-            value = item.value,
-            onValueChange = onValueChange,
+            value = sliderValue,
+            onValueChange = { newValue ->
+                sliderValue = newValue
+                if (onValueChangeFinished == null) {
+                    onValueChange(newValue)
+                }
+            },
+            onValueChangeFinished = {
+                onValueChangeFinished?.invoke(sliderValue) ?: onValueChange(sliderValue)
+            },
             valueRange = item.valueRange,
         )
     }

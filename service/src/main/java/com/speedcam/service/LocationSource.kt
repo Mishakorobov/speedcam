@@ -144,13 +144,16 @@ class LocationManagerSource(
  * can honestly be marked as such — a raw `LocationManager` fix from a single provider must not
  * claim the same standing.
  */
-fun Location.toFix(): Fix =
-    Fix(
+fun Location.toFix(): Fix {
+    val rawSpeed = if (hasSpeed()) speed else 0f
+    val speedMs = if (rawSpeed < Fix.DEADBAND_SPEED_MS) 0f else rawSpeed
+    return Fix(
         position = LatLon(latitude, longitude),
         timestampMillis = time,
         accuracyM = if (hasAccuracy()) accuracy else Float.NaN,
-        speedMs = if (hasSpeed()) speed else 0f,
+        speedMs = speedMs,
         headingDeg = if (hasBearing()) bearing.toDouble() else 0.0,
         altitudeM = if (hasAltitude()) altitude else 0.0,
         providerTag = provider,
     )
+}

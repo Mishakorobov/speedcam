@@ -58,7 +58,12 @@ object PipHelper {
         isMuted: Boolean,
     ): RemoteAction {
         val iconRes = if (isMuted) R.drawable.ic_pip_volume_up else R.drawable.ic_pip_volume_off
-        val title = if (isMuted) "Unmute" else "Mute"
+        val title =
+            if (isMuted) {
+                context.getString(R.string.pip_action_unmute)
+            } else {
+                context.getString(R.string.pip_action_mute)
+            }
         val intent = Intent(ACTION_PIP_MUTE).setPackage(context.packageName)
         val pendingIntent =
             PendingIntent.getBroadcast(
@@ -80,7 +85,12 @@ object PipHelper {
         isRunning: Boolean,
     ): RemoteAction {
         val iconRes = if (isRunning) R.drawable.ic_pip_stop else R.drawable.ic_pip_play
-        val title = if (isRunning) "Stop Radar" else "Start Radar"
+        val title =
+            if (isRunning) {
+                context.getString(R.string.pip_action_stop)
+            } else {
+                context.getString(R.string.pip_action_start)
+            }
         val intent = Intent(ACTION_PIP_TOGGLE).setPackage(context.packageName)
         val pendingIntent =
             PendingIntent.getBroadcast(

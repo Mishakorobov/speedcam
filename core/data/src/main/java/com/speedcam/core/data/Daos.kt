@@ -107,6 +107,9 @@ interface CameraDao {
     @Query("SELECT COUNT(*) FROM camera WHERE source = :source")
     suspend fun countBySource(source: Int): Int
 
+    @Query("SELECT EXISTS(SELECT 1 FROM camera WHERE source = 3 LIMIT 1)")
+    fun hasContraCamCameras(): Boolean
+
     @Query("SELECT * FROM camera ORDER BY lat DESC, lon DESC LIMIT :limit")
     fun observeMostRecent(limit: Int): Flow<List<CameraEntity>>
 
@@ -307,7 +310,9 @@ class CameraQueryAdapter(
     private val useContraCamProvider: () -> Boolean = { false },
 ) : CameraQuery {
     override fun inBox(box: BoundingBox): List<Camera> {
-        val rows = dao.inBoxActiveSource(box, useContraCamProvider())
+        val wantContra = useContraCamProvider()
+        val effectiveUseContra = wantContra && dao.hasContraCamCameras()
+        val rows = dao.inBoxActiveSource(box, effectiveUseContra)
         return CameraMappers.toDomainList(rows)
     }
 }

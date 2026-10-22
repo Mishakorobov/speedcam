@@ -1,0 +1,29 @@
+{
+  "brand": "SpeedCam",
+  "tagline": "GPS Radar Proximity & Speed Camera Warning System",
+  "brief": "A modern, reliable automotive safety app for Android, HUD and Wear OS. Warns drivers about speed traps, average speed corridors, and red-light cameras with pinpoint GPS accuracy.",
+  "adjectives": ["Vigilant", "Precise", "Dynamic", "Focused", "Modern"],
+  "industry": "consumer-app",
+  "brand_color": "#FF5E1E",
+  "tile_color": "#0F172A",
+  "greyscale": false,
+  "final": true,
+  "concepts": [
+    {
+      "name": "Velocity Iris",
+      "symbol": "speedcam-symbol-color.svg",
+      "lockup": "speedcam-lockup-color.svg",
+      "stacked": "speedcam-stacked-color.svg",
+      "symbol_on_tile": "speedcam-symbol-color.svg",
+      "lockup_on_dark": "speedcam-lockup-dark.svg",
+      "stacked_on_dark": "speedcam-stacked-dark.svg",
+      "idea": "An aerodynamic 3-blade aperture shutter fusing speed turbine dynamics with a precision camera lens pupil.",
+      "rationale": [
+        "Camera & Radar integration: three rotational swept vanes evoke both an optical aperture shutter and a dynamic tachometer turbine.",
+        "Uncompromising clarity at 16 px: bold, clean geometry and 12-unit channels ensure zero loss of legibility in status bars and smartwatches.",
+        "Automotive presence: Electric Blaze Orange (#FF5E1E) against Carbon Slate delivers instant warning recognition without visual fatigue."
+      ]
+    }
+  ],
+  "recommendation": "Velocity Iris (Concept A) delivers the ideal balance of automotive dynamism, optical precision, and instant recognition across both vehicle HUDs and mobile screens."
+}

@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="wear_app_name">SpeedCam Moto</string>
+    <string name="wear_app_name">SpeedCam Мото</string>
+    <string name="wear_haptic_title">Мото-вибрация</string>
+    <string name="wear_test_vibration">Тест вибрации</string>
+    <string name="wear_profiles_section">ПРОФИЛИ ВИБРАЦИИ</string>
+    <string name="wear_status_radar_active">РАДАР АКТИВЕН</string>
+    <string name="wear_status_offline">ВЫКЛЮЧЕН</string>
+    <string name="wear_status_specs_avg">КСС СРЕДНЯЯ</string>
+    <string name="wear_action_mute">Звук</string>
+    <string name="wear_action_toggle">Запуск/Остановка</string>
+    <string name="wear_action_settings">Настройки</string>
+    <string name="wear_unit_kmh">КМ/Ч</string>
 </resources>

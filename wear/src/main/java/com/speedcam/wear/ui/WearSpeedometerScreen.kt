@@ -143,7 +143,7 @@ private fun TopHazardBadge(telemetry: WearTelemetry) {
                     modifier = Modifier.size(14.dp),
                 )
                 Text(
-                    text = "${distance}m",
+                    text = "${distance}м",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
@@ -151,7 +151,7 @@ private fun TopHazardBadge(telemetry: WearTelemetry) {
             }
             inSpecs -> {
                 Text(
-                    text = "SPECS AVG",
+                    text = "КСС СРЕДНЯЯ",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color(0xFF00E5FF),
@@ -159,7 +159,7 @@ private fun TopHazardBadge(telemetry: WearTelemetry) {
             }
             telemetry.running -> {
                 Text(
-                    text = "RADAR ACTIVE",
+                    text = "РАДАР АКТИВЕН",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     color = Color(0xFF10B981),
@@ -167,7 +167,7 @@ private fun TopHazardBadge(telemetry: WearTelemetry) {
             }
             else -> {
                 Text(
-                    text = "OFFLINE",
+                    text = "ВЫКЛЮЧЕН",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF94A3B8),
@@ -195,7 +195,7 @@ private fun CentralSpeedReadout(telemetry: WearTelemetry) {
                 lineHeight = 46.sp,
             )
             Text(
-                text = "KM/H",
+                text = "КМ/Ч",
                 fontSize = 9.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color(0xFF94A3B8),
@@ -251,7 +251,7 @@ private fun BottomControlActions(
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.VolumeOff,
-                contentDescription = "Mute",
+                contentDescription = "Звук",
                 tint = Color.White,
                 modifier = Modifier.size(16.dp),
             )
@@ -268,7 +268,7 @@ private fun BottomControlActions(
         ) {
             Icon(
                 imageVector = if (telemetry.running) Icons.Default.Stop else Icons.Default.PlayArrow,
-                contentDescription = "Toggle Service",
+                contentDescription = "Запуск/Остановка",
                 tint = Color.White,
                 modifier = Modifier.size(16.dp),
             )
@@ -285,7 +285,7 @@ private fun BottomControlActions(
         ) {
             Icon(
                 imageVector = Icons.Default.Settings,
-                contentDescription = "Settings",
+                contentDescription = "Настройки",
                 tint = Color.White,
                 modifier = Modifier.size(16.dp),
             )

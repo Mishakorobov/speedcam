@@ -17,10 +17,15 @@ import com.speedcam.tools.import.source.BoundingBox
 object ImportOptions {
     const val KEY_HELP = "help"
     const val KEY_SPEEDCAM = "speedcam"
+    const val KEY_CONTRACAM = "contracam"
     const val KEY_OVERPASS = "osm-area"
     const val KEY_BBOX = "osm-bbox"
     const val KEY_PBF = "osm-pbf"
     const val KEY_OUTPUT = "output"
+    const val KEY_MANIFEST = "manifest"
+    const val KEY_DOWNLOAD_URL = "download-url"
+    const val KEY_VERSION = "version"
+    const val KEY_VERIFY = "verify"
 
     /** Values accepted by [KEY_OVERPASS]. */
     object Areas {
@@ -59,19 +64,20 @@ object ImportOptions {
         """
         speedcam-import — build the camera database
 
-          --speedcam <file>     SpeedCam-format text file to import
-          --osm-pbf <file>      Geofabrik .osm.pbf extract. Repeatable.
-          --osm-area <area>     Fetch from Overpass. Repeatable. One of: ${Areas.ALL.joinToString(", ")}
-          --osm-bbox <s,w,n,e>  Fetch an arbitrary Overpass region. Repeatable.
-                                 Example: --osm-bbox 55.4,36.9,56.1,38.3
-          --output <file>       SQLite database to write. Required.
-          --help                Show this message
+          --speedcam <file>      SpeedCam-format text file to import. Repeatable.
+          --contracam <file>     ContraCam binary map.dat archive to import. Repeatable.
+          --osm-pbf <file>       Geofabrik .osm.pbf extract. Repeatable.
+          --osm-area <area>      Fetch from Overpass. Repeatable. One of: ${Areas.ALL.joinToString(", ")}
+          --osm-bbox <s,w,n,e>   Fetch an arbitrary Overpass region. Repeatable.
+                                  Example: --osm-bbox 55.4,36.9,56.1,38.3
+          --output <file>        SQLite database to write.
+          --manifest <file>      Generate verified JSON manifest at this path.
+          --download-url <url>   Download URL for russia.db embedded in manifest.
+          --version <ver>        Version tag (e.g. 2026.10.22) embedded in manifest.
+          --verify <file>        Verify integrity, schema hash and manifest for database.
+          --help                 Show this message
 
         Attribution: camera data derived from OpenStreetMap must carry
         "Data © OpenStreetMap contributors" under the ODbL 1.0 licence.
-
-        Overpass tiles each region, because a single query spanning a country times out on
-        the public instances. Tiles that fail after three attempts are skipped and reported;
-        re-run to fill them.
         """.trimIndent()
 }

@@ -2,6 +2,7 @@ package com.speedcam.app.sync
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -76,5 +77,35 @@ class DatabaseSyncEngineTest {
             }
 
         assertEquals(expectedSha, actualSha)
+    }
+
+    @Test
+    fun `formatErrorMessage formats network errors into readable Russian messages`() {
+        val unknownHost = java.net.UnknownHostException("raw.githubusercontent.com")
+        val offlineMsg = DatabaseSyncEngine.formatErrorMessage(unknownHost)
+        assertTrue(offlineMsg.contains("отсутствует подключение") || offlineMsg.contains("Не удалось подключиться"))
+
+        val timeout = java.net.SocketTimeoutException("timeout")
+        val timeoutMsg = DatabaseSyncEngine.formatErrorMessage(timeout)
+        assertTrue(timeoutMsg.contains("Время ожидания"))
+
+        val http404 = java.io.IOException("HTTP 404 from https://example.com/manifest.json")
+        val notFoundMsg = DatabaseSyncEngine.formatErrorMessage(http404)
+        assertTrue(notFoundMsg.contains("404") && notFoundMsg.contains("не найден"))
+
+        val http503 = java.io.IOException("HTTP 503 from https://example.com/manifest.json")
+        val serverErrorMsg = DatabaseSyncEngine.formatErrorMessage(http503)
+        assertTrue(serverErrorMsg.contains("временно недоступен"))
+
+        val security = SecurityException("SHA-256 mismatch")
+        val securityMsg = DatabaseSyncEngine.formatErrorMessage(security)
+        assertTrue(securityMsg.contains("целостности") || securityMsg.contains("SHA-256"))
+    }
+
+    @Test
+    fun `known mirrors contain default manifest url and alternative mirror`() {
+        assertTrue(DatabaseSyncEngine.KNOWN_MIRRORS.isNotEmpty())
+        assertEquals(DatabaseSyncEngine.DEFAULT_MANIFEST_URL, DatabaseSyncEngine.KNOWN_MIRRORS[0])
+        assertTrue(DatabaseSyncEngine.KNOWN_MIRRORS.size >= 2)
     }
 }
