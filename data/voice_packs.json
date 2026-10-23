@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "updatedAt": "2026-10-23T16:30:00Z",
+  "packs": [
+    {
+      "id": "elena_standard",
+      "name": "Стандартный диктор (Елена)",
+      "author": "SpeedCam Community",
+      "description": "Классический студийный женский голос. Четкая артикуляция и спокойные предупреждения без лишних шумов.",
+      "language": "ru",
+      "downloadUrl": "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/elena_standard.zip",
+      "sizeMb": 1.4,
+      "clipCount": 48,
+      "license": "CC-BY 4.0 / Свободное использование"
+    },
+    {
+      "id": "oxana_navigator",
+      "name": "Оксана (Навигатор)",
+      "author": "Open Voice Project",
+      "description": "Популярный голос навигации для водителей с акцентом на своевременное предупреждение и безопасность.",
+      "language": "ru",
+      "downloadUrl": "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/oxana_navigator.zip",
+      "sizeMb": 1.8,
+      "clipCount": 52,
+      "license": "Public Domain / Бесплатно"
+    },
+    {
+      "id": "dmitry_brutal",
+      "name": "Дмитрий (Командный)",
+      "author": "Road Safety Media",
+      "description": "Уверенный мужской командный голос. Лаконичные строгие фразы для быстрой реакции на трассе.",
+      "language": "ru",
+      "downloadUrl": "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/dmitry_brutal.zip",
+      "sizeMb": 1.6,
+      "clipCount": 46,
+      "license": "CC-BY-SA / Бесплатно"
+    },
+    {
+      "id": "retro_humor",
+      "name": "Веселый штурман (Юмор)",
+      "author": "Auto Club CIS",
+      "description": "Непринужденные фразы с дорожным юмором для комфортных дальних поездок.",
+      "language": "ru",
+      "downloadUrl": "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/retro_humor.zip",
+      "sizeMb": 2.1,
+      "clipCount": 54,
+      "license": "Free Non-Commercial"
+    },
+    {
+      "id": "alex_english",
+      "name": "English Navigator (Alex)",
+      "author": "Global SpeedCam",
+      "description": "Concise and clear English alerts for speed limits, red lights and highway cameras.",
+      "language": "en",
+      "downloadUrl": "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/alex_english.zip",
+      "sizeMb": 1.3,
+      "clipCount": 42,
+      "license": "MIT / Open Data"
+    }
+  ]
+}

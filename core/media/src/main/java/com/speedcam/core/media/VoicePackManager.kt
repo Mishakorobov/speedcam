@@ -169,6 +169,15 @@ class VoicePackManager(
             Pair(false, "Ошибка импорта архива: ${e.localizedMessage ?: e.message}")
         }
 
+    fun deletePack(packId: String): Boolean {
+        val dir = File(packsDir, packId)
+        return if (dir.exists() && dir.isDirectory) {
+            dir.deleteRecursively()
+        } else {
+            false
+        }
+    }
+
     private fun countAudioFiles(dir: File): Int {
         val files = dir.listFiles() ?: return 0
         val supported = setOf("mp3", "ogg", "wav", "m4a")

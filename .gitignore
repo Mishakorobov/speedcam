@@ -46,6 +46,7 @@ keystore.properties
 # This entry is only ever meant to exclude the generated database directory at the project root.
 /data/*
 !/data/manifest.json
+!/data/voice_packs.json
 
 # OpenCode
 node_modules/

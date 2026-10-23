@@ -147,6 +147,7 @@ data class SettingsActions(
     val onTtsSpeechRateChange: (Float) -> Unit = {},
     val onSelectVoicePack: (String) -> Unit = {},
     val onImportVoicePack: () -> Unit = {},
+    val onOpenVoiceCatalog: () -> Unit = {},
     val onTestVoice: () -> Unit = {},
     val onAutoUpdateChange: (Boolean) -> Unit = {},
     val onCheckForUpdates: () -> Unit = {},
@@ -442,6 +443,19 @@ private fun VoicePackStatusSurface(
                         )
                     }
                 }
+            }
+
+            Button(
+                onClick = actions.onOpenVoiceCatalog,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CloudDownload,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Бесплатный онлайн-каталог пакетов")
             }
 
             OutlinedButton(

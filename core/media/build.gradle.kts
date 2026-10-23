@@ -30,6 +30,7 @@ dependencies {
 
     testImplementation(libs.junit5)
     testImplementation(libs.kotlin.test.junit)
+    testImplementation("org.json:json:20240303")
     testRuntimeOnly(libs.junit5.platform.launcher)
 }
 

@@ -91,6 +91,7 @@ import com.speedcam.app.ui.components.SpeedometerCluster
 import com.speedcam.app.ui.theme.BrandPrimaryDark
 import com.speedcam.app.ui.theme.SpeedCamTheme
 import com.speedcam.app.ui.theme.SpeedSafe
+import com.speedcam.app.voice.VoicePackCatalogDialog
 import com.speedcam.core.data.CameraStore
 import com.speedcam.core.data.HazardReportEntity
 import com.speedcam.core.data.HazardReportType
@@ -101,6 +102,7 @@ import com.speedcam.core.detect.QuickSetting
 import com.speedcam.core.detect.SectionRecord
 import com.speedcam.core.detect.TransportProfile
 import com.speedcam.core.geo.LatLon
+import com.speedcam.core.media.OnlineVoiceCatalog
 import com.speedcam.core.media.OutputMode
 import com.speedcam.core.media.VoiceAlertCoordinator
 import com.speedcam.core.media.VoiceEngine
@@ -115,6 +117,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -173,6 +177,9 @@ class MainActivity : ComponentActivity() {
     private var activeVoicePackId by mutableStateOf<String?>(null)
     private var activeVoicePackName by mutableStateOf<String?>(null)
     private var installedVoicePacks by mutableStateOf<List<Pair<String, String>>>(emptyList())
+    private var showVoiceCatalogDialog by mutableStateOf(false)
+    private var downloadingVoicePackId by mutableStateOf<String?>(null)
+    private var catalogVoicePacks by mutableStateOf(OnlineVoiceCatalog.BUNDLED_CATALOG)
 
     private val voicePackManager by lazy { VoicePackManager(this) }
     private val voiceAlertCoordinator by lazy { VoiceAlertCoordinator(this) }
@@ -416,6 +423,30 @@ class MainActivity : ComponentActivity() {
                 ),
             actions = buildShellActions(),
         )
+
+        if (showVoiceCatalogDialog) {
+            VoicePackCatalogDialog(
+                catalogPacks = catalogVoicePacks,
+                installedPackIds = installedVoicePacks.map { it.first }.toSet(),
+                activePackId = activeVoicePackId,
+                downloadingPackId = downloadingVoicePackId,
+                onDismiss = { showVoiceCatalogDialog = false },
+                onDownloadPack = { pack -> downloadVoicePack(pack.downloadUrl, pack.id, pack.name) },
+                onDownloadCustomUrl = { url, name ->
+                    val cleanId = (name.ifBlank { "custom" }).lowercase().replace(Regex("[^a-z0-9_]"), "_")
+                    downloadVoicePack(url, cleanId, name.ifBlank { "Custom Pack" })
+                },
+                onSelectPack = { packId ->
+                    activeVoicePackId = packId
+                    profiles.activeVoicePackId = packId
+                    profiles.voiceEngine = VoiceEngine.AUDIO_PACK
+                    voiceEngine = VoiceEngine.AUDIO_PACK
+                    refreshVoicePacks()
+                },
+                onDeletePack = ::deleteVoicePack,
+                onRefreshCatalog = ::refreshVoiceCatalog,
+            )
+        }
     }
 
     private fun getBondedDevices(): List<Pair<String, String>> =
@@ -563,6 +594,10 @@ class MainActivity : ComponentActivity() {
                 refreshVoicePacks()
             },
             onImportVoicePack = { voicePackPickerLauncher.launch(arrayOf("*/*")) },
+            onOpenVoiceCatalog = {
+                refreshVoiceCatalog()
+                showVoiceCatalogDialog = true
+            },
             onTestVoice = ::testVoice,
             onImportDatabaseFile = { filePickerLauncher.launch(arrayOf("*/*")) },
             onRestoreBundledDatabase = ::restoreBundledDatabase,
@@ -642,6 +677,67 @@ class MainActivity : ComponentActivity() {
         installedVoicePacks = packs.map { it.id to "${it.name} (${it.clipCount})" }
         val active = packs.firstOrNull { it.id == activeVoicePackId }
         activeVoicePackName = active?.let { "${it.name} (${it.clipCount} фраз)" }
+    }
+
+    private fun refreshVoiceCatalog() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val packs = OnlineVoiceCatalog.fetchCatalog()
+            withContext(Dispatchers.Main) {
+                catalogVoicePacks = packs
+            }
+        }
+    }
+
+    private fun downloadVoicePack(
+        url: String,
+        packId: String,
+        packName: String,
+    ) {
+        downloadingVoicePackId = packId
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result =
+                runCatching {
+                    val conn = URL(url).openConnection() as HttpURLConnection
+                    conn.connectTimeout = 15000
+                    conn.readTimeout = 30000
+                    conn.setRequestProperty("User-Agent", "SpeedCamApp/1.0 (Android)")
+                    if (conn.responseCode in 200..299) {
+                        conn.inputStream.use { stream ->
+                            voicePackManager.importPackFromZip(stream, packId)
+                        }
+                    } else {
+                        Pair(false, "Ошибка сервера: HTTP ${conn.responseCode}")
+                    }
+                }.getOrElse { Pair(false, "Сбой загрузки: ${it.localizedMessage ?: it.message}") }
+
+            withContext(Dispatchers.Main) {
+                downloadingVoicePackId = null
+                Toast.makeText(this@MainActivity, result.second, Toast.LENGTH_LONG).show()
+                if (result.first) {
+                    activeVoicePackId = packId
+                    profiles.activeVoicePackId = packId
+                    profiles.voiceEngine = VoiceEngine.AUDIO_PACK
+                    voiceEngine = VoiceEngine.AUDIO_PACK
+                    refreshVoicePacks()
+                }
+            }
+        }
+    }
+
+    private fun deleteVoicePack(packId: String) {
+        val deleted = voicePackManager.deletePack(packId)
+        if (deleted) {
+            if (activeVoicePackId == packId) {
+                activeVoicePackId = null
+                profiles.activeVoicePackId = null
+                profiles.voiceEngine = VoiceEngine.TTS
+                voiceEngine = VoiceEngine.TTS
+            }
+            refreshVoicePacks()
+            Toast.makeText(this, "Голосовой пакет удален", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Не удалось удалить пакет", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun importVoicePackZip(uri: Uri) {
@@ -1054,6 +1150,7 @@ private data class ShellActions(
     val onTtsSpeechRateChange: (Float) -> Unit,
     val onSelectVoicePack: (String) -> Unit,
     val onImportVoicePack: () -> Unit,
+    val onOpenVoiceCatalog: () -> Unit,
     val onTestVoice: () -> Unit,
     val onOfflineTilesEnabledChange: (Boolean) -> Unit,
     val onCustomTileServerUrlChange: (String) -> Unit,
@@ -1356,6 +1453,7 @@ private fun buildSettingsActions(actions: ShellActions): SettingsActions =
         onTtsSpeechRateChange = actions.onTtsSpeechRateChange,
         onSelectVoicePack = actions.onSelectVoicePack,
         onImportVoicePack = actions.onImportVoicePack,
+        onOpenVoiceCatalog = actions.onOpenVoiceCatalog,
         onTestVoice = actions.onTestVoice,
         onAutoUpdateChange = actions.onAutoUpdateChange,
         onCheckForUpdates = actions.onCheckForUpdates,
