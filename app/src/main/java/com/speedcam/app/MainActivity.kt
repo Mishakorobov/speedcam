@@ -278,7 +278,8 @@ class MainActivity : ComponentActivity() {
                     cameraStore.cameraDao
                         .queryBox(55.0, 37.0, 56.5, 38.5)
                         .count { it.source == CameraSource.CONTRACAM.ordinal }
-                if (contraCount > 0 && moscowCameras == 0) {
+                val isCorrupt = contraCount > 0 && (moscowCameras < 100 || contraCount > 35000)
+                if (isCorrupt) {
                     Log.w("MainActivity", "Purging $contraCount displaced ContraCam cameras on startup")
                     cameraStore.cameraDao.deleteBySource(CameraSource.CONTRACAM.ordinal)
                     withContext(Dispatchers.Main) {
@@ -857,7 +858,7 @@ class MainActivity : ComponentActivity() {
                     cameraStore.cameraDao
                         .queryBox(55.0, 37.0, 56.5, 38.5)
                         .count { it.source == CameraSource.CONTRACAM.ordinal }
-                val isCorrupt = contraCount > 0 && moscowCameras == 0
+                val isCorrupt = contraCount > 0 && (moscowCameras < 100 || contraCount > 35000)
 
                 if (contraCount == 0 || isCorrupt) {
                     if (isCorrupt) {

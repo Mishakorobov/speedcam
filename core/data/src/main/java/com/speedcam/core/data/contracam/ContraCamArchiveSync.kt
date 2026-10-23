@@ -120,7 +120,7 @@ class ContraCamArchiveSync(
 
             // 3. Resilient offline fallback: promote existing verified cameras into ContraCam source
             try {
-                val existingOsm = cameraDao.allCameras()
+                val existingOsm = cameraDao.allCameras().filter { it.source != CameraSource.CONTRACAM.ordinal }
                 if (existingOsm.isNotEmpty()) {
                     val cloned =
                         existingOsm.map { cam ->
