@@ -98,8 +98,8 @@ class CameraStore(
             val active = if (useContraCamDb && hasContra) 1 else 0
             val results = ArrayList<CameraEntity>()
             var lastId = 0L
-            val chunkSize = 1000
-            val maxLimit = 5000
+            val chunkSize = 2000
+            val maxLimit = 100_000
             while (results.size < maxLimit) {
                 val chunk =
                     runCatching {
@@ -114,12 +114,15 @@ class CameraStore(
         }
 
     /** Returns cameras inside [box] matching the active database source (ContraCam vs OSM). */
-    suspend fun camerasInBox(box: BoundingBox): List<Camera> =
+    suspend fun camerasInBox(
+        box: BoundingBox,
+        limit: Int = 2000,
+    ): List<Camera> =
         withContext(Dispatchers.IO) {
             val hasContra = runCatching { database.cameraDao().hasContraCamCameras() }.getOrDefault(false)
             val active = useContraCamDb && hasContra
             runCatching {
-                database.cameraDao().inBoxActiveSource(box, active).map(CameraMappers::toDomain)
+                database.cameraDao().inBoxActiveSource(box, active, limit).map(CameraMappers::toDomain)
             }.getOrDefault(emptyList())
         }
 

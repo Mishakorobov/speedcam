@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
@@ -33,11 +32,8 @@ import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Vibration
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -62,7 +58,6 @@ import com.speedcam.app.ui.components.SettingsSectionCard
 import com.speedcam.app.ui.components.SettingsSliderItem
 import com.speedcam.app.ui.components.SettingsToggleItem
 import com.speedcam.app.ui.components.SliderItemState
-import com.speedcam.app.ui.theme.SpeedDanger
 import com.speedcam.app.ui.theme.SpeedWarning
 import com.speedcam.app.util.toRussianTitle
 import com.speedcam.core.detect.QuickSetting
@@ -81,9 +76,6 @@ data class SettingsState(
     val captureDistanceKm: Double,
     val minAlertSpeedKmh: Int = 5,
     val transport: TransportProfile,
-    val hudEnabled: Boolean,
-    val hudAutoHide: Boolean = false,
-    val hudPermissionGranted: Boolean,
     val outputMode: OutputMode = OutputMode.STANDARD,
     val silentDuringCall: Boolean,
     val cameraCount: Int,
@@ -138,10 +130,6 @@ data class SettingsActions(
     val onCaptureDistanceChange: (Double) -> Unit = {},
     val onMinAlertSpeedChange: (Int) -> Unit = {},
     val onTransportChange: (TransportProfile) -> Unit = {},
-    val onHudEnabledChange: (Boolean) -> Unit = {},
-    val onHudAutoHideChange: (Boolean) -> Unit = {},
-    val onRequestHudPermission: () -> Unit = {},
-    val onResetHudPosition: () -> Unit = {},
     val onOutputModeChange: (OutputMode) -> Unit = {},
     val onSilentDuringCallChange: (Boolean) -> Unit = {},
     val onVoiceEngineChange: (VoiceEngine) -> Unit = {},
@@ -203,7 +191,6 @@ fun SettingsScreen(
         AutomotiveIntegrationSectionCard(state = state, actions = actions)
         WearCompanionSectionCard(state = state, actions = actions)
         AudioSectionCard(state = state, actions = actions)
-        HudSectionCard(state = state, actions = actions)
         PipSectionCard(state = state, actions = actions)
         DatabaseSyncSectionCard(state = state, actions = actions)
         OfflineMapSectionCard(state = state, actions = actions)
@@ -769,43 +756,6 @@ private fun WearHapticProfileSelector(
                 onClick = { onChange(key) },
                 label = { Text(label) },
             )
-        }
-    }
-}
-
-@Composable
-private fun HudSectionCard(
-    state: SettingsState,
-    actions: SettingsActions,
-) {
-    SettingsSectionCard(
-        title = "Плавающий HUD (Виджет поверх окон)",
-        icon = Icons.Default.Layers,
-    ) {
-        SettingsToggleItem(
-            title = "Поверх других приложений",
-            subtitle = "Отображать плавающий спидометр и камеры поверх навигационных приложений",
-            checked = state.hudEnabled,
-            onCheckedChange = actions.onHudEnabledChange,
-        )
-
-        SettingsToggleItem(
-            title = "Снижать яркость на чистой дороге",
-            subtitle = "Уменьшать прозрачность виджета при отсутствии опасностей и камер",
-            checked = state.hudAutoHide,
-            onCheckedChange = actions.onHudAutoHideChange,
-        )
-
-        if (!state.hudPermissionGranted) {
-            Spacer(modifier = Modifier.height(4.dp))
-            HudPermissionWarningCard(onRequestPermission = actions.onRequestHudPermission)
-        }
-
-        OutlinedButton(
-            onClick = actions.onResetHudPosition,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Сбросить позицию окна HUD")
         }
     }
 }
@@ -1413,52 +1363,6 @@ private fun TransportSelector(
                 onClick = { onChange(profile) },
                 label = { Text(profile.toRussianTitle()) },
             )
-        }
-    }
-}
-
-@Composable
-private fun HudPermissionWarningCard(onRequestPermission: () -> Unit) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF261217)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, SpeedDanger.copy(alpha = 0.6f)),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = SpeedDanger,
-                    modifier = Modifier.size(20.dp),
-                )
-                Text(
-                    text = "Требуется разрешение поверх окон",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = SpeedDanger,
-                )
-            }
-            Text(
-                text =
-                    "Для отображения плавающего спидометра поверх Яндекс.Навигатора или карт " +
-                        "требуется предоставить системное разрешение.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Button(
-                onClick = onRequestPermission,
-                colors =
-                    androidx.compose.material3.ButtonDefaults
-                        .buttonColors(containerColor = SpeedDanger),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Предоставить разрешение")
-            }
         }
     }
 }

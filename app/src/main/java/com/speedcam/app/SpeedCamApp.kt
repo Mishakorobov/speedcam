@@ -2,7 +2,6 @@ package com.speedcam.app
 
 import android.app.Application
 import android.content.Context
-import com.speedcam.app.hud.HudOverlayManager
 import com.speedcam.app.map.OfflineTileManager
 import com.speedcam.app.sync.DatabaseSyncWorker
 import com.speedcam.app.sync.HazardReportSyncWorker
@@ -64,7 +63,6 @@ class SpeedCamApp : Application() {
             DatabaseSyncWorker.schedulePeriodic(this)
         }
         HazardReportSyncWorker.schedulePeriodic(this)
-        HudOverlayManager.init(this)
         SpeedCamWidgetManager.init(this)
     }
 

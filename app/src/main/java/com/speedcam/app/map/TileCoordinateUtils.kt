@@ -131,7 +131,7 @@ object TileCoordinateUtils {
         viewport: MapViewport,
         marginFactor: Double = 1.35,
     ): TileRange {
-        val intZoom = viewport.zoom.toInt().coerceIn(0, 19)
+        val intZoom = viewport.zoom.toInt().coerceIn(0, 18)
         if (intZoom == 0) {
             return TileRange(zoom = 0, minX = 0, maxX = 0, minY = 0, maxY = 0)
         }
@@ -139,18 +139,28 @@ object TileCoordinateUtils {
         val box = MercatorProjection.viewportBoundingBox(viewport, marginFactor)
         val maxCoord = (1 shl intZoom) - 1
 
-        val minX = lonToTileX(box.minLon, intZoom)
-        val maxX = lonToTileX(box.maxLon, intZoom)
+        val rawMinX = lonToTileX(box.minLon, intZoom)
+        val rawMaxX = lonToTileX(box.maxLon, intZoom)
         // Higher latitude is smaller Y in Mercator
-        val minY = latToTileY(box.maxLat, intZoom)
-        val maxY = latToTileY(box.minLat, intZoom)
+        val rawMinY = latToTileY(box.maxLat, intZoom)
+        val rawMaxY = latToTileY(box.minLat, intZoom)
+
+        val minX = minOf(rawMinX, rawMaxX).coerceIn(0, maxCoord)
+        val maxX = maxOf(rawMinX, rawMaxX).coerceIn(0, maxCoord)
+        val minY = minOf(rawMinY, rawMaxY).coerceIn(0, maxCoord)
+        val maxY = maxOf(rawMinY, rawMaxY).coerceIn(0, maxCoord)
+
+        // Safety clamp: never allow a tile range to exceed 8x8 (64 tiles) in one viewport
+        val maxSpan = 7
+        val clampedMaxX = if (maxX - minX > maxSpan) minX + maxSpan else maxX
+        val clampedMaxY = if (maxY - minY > maxSpan) minY + maxSpan else maxY
 
         return TileRange(
             zoom = intZoom,
-            minX = minX.coerceIn(0, maxCoord),
-            maxX = maxX.coerceIn(0, maxCoord),
-            minY = minY.coerceIn(0, maxCoord),
-            maxY = maxY.coerceIn(0, maxCoord),
+            minX = minX,
+            maxX = clampedMaxX,
+            minY = minY,
+            maxY = clampedMaxY,
         )
     }
 }

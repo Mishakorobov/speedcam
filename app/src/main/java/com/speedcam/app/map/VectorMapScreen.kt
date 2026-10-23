@@ -100,6 +100,7 @@ fun VectorMapScreen(
     mapData: VectorMapData,
     actions: VectorMapActions,
     useContraCamDb: Boolean = false,
+    totalCameraCount: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     var roads by remember { mutableStateOf<List<VectorRoad>>(emptyList()) }
@@ -114,12 +115,16 @@ fun VectorMapScreen(
     val tileManager = remember { SpeedCamApp.offlineTileManager(context) }
 
     // Dynamic camera loading for active visible bounding box (avoids loading 50k+ cameras into RAM)
-    LaunchedEffect(mapState.centerLat, mapState.centerLon, mapState.zoom, mapData.cameras.size, useContraCamDb) {
+    LaunchedEffect(mapState.centerLat, mapState.centerLon, mapState.zoom, useContraCamDb) {
         cameraStore.useContraCamDb = useContraCamDb
+        delay(120) // Smooth debounce for pan/zoom gestures
         val box = mapState.computeVisibleBoundingBox(1080f, 1920f)
-        val inBox = cameraStore.camerasInBox(box)
-        dynamicCameras = inBox
-        totalDbCameras = cameraStore.cameraCount()
+        val inBox = cameraStore.camerasInBox(box, limit = 2000)
+        if (inBox.isNotEmpty() || dynamicCameras == null) {
+            dynamicCameras = inBox
+        }
+        val count = cameraStore.cameraCount()
+        if (count > 0) totalDbCameras = count
     }
 
     // Synchronize vehicle heading and coordinates with map viewport
@@ -193,7 +198,11 @@ fun VectorMapScreen(
 
     val activeCameras =
         remember(dynamicCameras, mapData.cameras) {
-            dynamicCameras ?: mapData.cameras
+            when {
+                !dynamicCameras.isNullOrEmpty() -> dynamicCameras!!
+                mapData.cameras.isNotEmpty() -> mapData.cameras
+                else -> emptyList()
+            }
         }
 
     val completeMapData =
@@ -207,6 +216,15 @@ fun VectorMapScreen(
             VectorMapData(activeCameras, mapData.sections, combinedRoads, mapData.blocked)
         }
 
+    val effectiveTotalCount =
+        if (totalCameraCount > 0) {
+            totalCameraCount
+        } else if (totalDbCameras > 0) {
+            totalDbCameras
+        } else {
+            mapData.cameras.size
+        }
+
     VectorMapScreenLayout(
         mapState = mapState,
         detectionState = detectionState,
@@ -216,7 +234,7 @@ fun VectorMapScreen(
         roadStatus = roadStatus,
         showCameraSheet = showCameraSheet,
         onToggleCameraSheet = { showCameraSheet = it },
-        totalCameraCount = if (totalDbCameras > 0) totalDbCameras else mapData.cameras.size,
+        totalCameraCount = effectiveTotalCount,
         catalogCameras = mapData.cameras,
         modifier = modifier,
     )

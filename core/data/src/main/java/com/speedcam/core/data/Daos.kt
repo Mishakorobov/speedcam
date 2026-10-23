@@ -36,6 +36,8 @@ interface CameraDao {
             OR
             (:minLon > :maxLon AND (lon >= :minLon OR lon <= :maxLon))
           )
+        ORDER BY id ASC
+        LIMIT :limit
         """,
     )
     fun queryBox(
@@ -43,10 +45,11 @@ interface CameraDao {
         minLon: Double,
         maxLat: Double,
         maxLon: Double,
+        limit: Int = 2000,
     ): List<CameraEntity>
 
     /** Unannotated bridge that unpacks the domain bounding box into the SQL bind arguments. */
-    fun inBox(box: BoundingBox): List<CameraEntity> = queryBox(box.minLat, box.minLon, box.maxLat, box.maxLon)
+    fun inBox(box: BoundingBox): List<CameraEntity> = queryBox(box.minLat, box.minLon, box.maxLat, box.maxLon, 2000)
 
     /**
      * Bounding-box lookup filtered by active database source mode:
@@ -68,6 +71,8 @@ interface CameraDao {
             OR
             (:useContraCam = 0 AND source != 3)
           )
+        ORDER BY id ASC
+        LIMIT :limit
         """,
     )
     fun queryBoxActiveSource(
@@ -76,11 +81,13 @@ interface CameraDao {
         maxLat: Double,
         maxLon: Double,
         useContraCam: Int,
+        limit: Int = 2000,
     ): List<CameraEntity>
 
     fun inBoxActiveSource(
         box: BoundingBox,
         useContraCam: Boolean,
+        limit: Int = 2000,
     ): List<CameraEntity> =
         queryBoxActiveSource(
             minLat = box.minLat,
@@ -88,6 +95,7 @@ interface CameraDao {
             maxLat = box.maxLat,
             maxLon = box.maxLon,
             useContraCam = if (useContraCam) 1 else 0,
+            limit = limit,
         )
 
     @Query("SELECT * FROM camera WHERE id = :id")

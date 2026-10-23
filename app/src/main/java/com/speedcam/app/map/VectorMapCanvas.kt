@@ -520,8 +520,9 @@ private fun DrawScope.drawCameras(
             (params.filterKind == null || cam.kind == params.filterKind) &&
                 (cam.position in bounds)
         }
+    val toDraw = if (visible.size > 1500) visible.take(1500) else visible
 
-    for (cam in visible) {
+    for (cam in toDraw) {
         val (cx, cy) = MercatorProjection.project(cam.position, viewport)
         if (!isOutsideViewport(cx, cy, viewport.width, viewport.height)) {
             renderCameraMarker(cam, Offset(cx.toFloat(), cy.toFloat()), params, viewport, textMeasurer)

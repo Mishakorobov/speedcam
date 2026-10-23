@@ -16,8 +16,6 @@ import com.speedcam.service.ProfileStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -41,33 +39,15 @@ object HudOverlayManager {
      * Initializes background observation of the detection pipeline.
      */
     fun init(appContext: Context) {
-        if (initialized) return
-        initialized = true
-
-        scope.launch {
-            DetectionState.state
-                .map { it.running }
-                .distinctUntilChanged()
-                .collect {
-                    sync(appContext)
-                }
-        }
+        // HUD overlay removed per user configuration
+        hide()
     }
 
     /**
      * Synchronizes the floating HUD visibility with current settings and detection state.
      */
     fun sync(context: Context) {
-        val appContext = context.applicationContext
-        val profiles = ProfileStore(appContext)
-        val canDraw = HudOverlay.canDrawOverlays(appContext)
-        val isRunning = DetectionState.state.value.running
-
-        val wanted = profiles.isEnabled && profiles.hudEnabled && canDraw && isRunning
-
-        if (wanted && overlay?.isShowing != true) {
-            show(appContext)
-        } else if (!wanted && overlay?.isShowing == true) {
+        if (overlay?.isShowing == true) {
             hide()
         }
     }
@@ -76,31 +56,8 @@ object HudOverlayManager {
      * Shows the floating HUD overlay window if permitted.
      */
     fun show(context: Context): Boolean {
-        val appContext = context.applicationContext
-        if (!HudOverlay.canDrawOverlays(appContext)) {
-            Log.w(TAG, "Cannot show HUD: SYSTEM_ALERT_WINDOW permission not granted")
-            return false
-        }
-
-        if (overlay?.isShowing == true) return true
-
-        val positions = HudPositionStore(appContext)
-        val newOverlay =
-            HudOverlay(
-                context = appContext,
-                positionStore = positions,
-                onBlockNearest = { blockNearest(appContext) },
-                onMuteNearest = { muteNearest(appContext) },
-                onReportHazard = { reportHazard(appContext) },
-                onReportSpecificHazard = { type -> reportSpecificHazard(appContext, type) },
-            )
-
-        val shown = newOverlay.show()
-        if (shown) {
-            overlay = newOverlay
-            Log.i(TAG, "Floating HUD overlay displayed over other apps.")
-        }
-        return shown
+        // Disabled
+        return false
     }
 
     /**

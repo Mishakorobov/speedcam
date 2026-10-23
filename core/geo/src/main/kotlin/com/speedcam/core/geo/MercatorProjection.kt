@@ -197,9 +197,9 @@ object MercatorProjection {
         }
 
         return BoundingBox(
-            minLat = minLat.coerceIn(-90.0, 90.0),
+            minLat = min(minLat, maxLat).coerceIn(-90.0, 90.0),
             minLon = minLon.coerceIn(-180.0, 180.0),
-            maxLat = maxLat.coerceIn(-90.0, 90.0),
+            maxLat = max(minLat, maxLat).coerceIn(-90.0, 90.0),
             maxLon = maxLon.coerceIn(-180.0, 180.0),
         )
     }

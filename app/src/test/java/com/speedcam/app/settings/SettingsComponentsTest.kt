@@ -84,9 +84,6 @@ class SettingsComponentsTest {
                 quickSetting = QuickSetting.MAXIMUM_ALERTS,
                 captureDistanceKm = 1.5,
                 transport = TransportProfile.MOTO,
-                hudEnabled = true,
-                hudAutoHide = true,
-                hudPermissionGranted = true,
                 outputMode = OutputMode.ALWAYS_SPEAKER,
                 silentDuringCall = true,
                 cameraCount = 12000,
@@ -97,9 +94,6 @@ class SettingsComponentsTest {
         assertEquals(QuickSetting.MAXIMUM_ALERTS, state.quickSetting)
         assertEquals(1.5, state.captureDistanceKm, 0.001)
         assertEquals(TransportProfile.MOTO, state.transport)
-        assertTrue(state.hudEnabled)
-        assertTrue(state.hudAutoHide)
-        assertTrue(state.hudPermissionGranted)
         assertEquals(OutputMode.ALWAYS_SPEAKER, state.outputMode)
         assertTrue(state.silentDuringCall)
         assertEquals(12000, state.cameraCount)

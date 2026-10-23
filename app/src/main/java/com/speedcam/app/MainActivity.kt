@@ -18,7 +18,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,13 +25,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -66,12 +62,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.speedcam.app.cameras.CameraRow
-import com.speedcam.app.hud.HudOverlay
-import com.speedcam.app.hud.HudOverlayManager
 import com.speedcam.app.map.MapCenteringHelper
 import com.speedcam.app.map.MapFollowMode
 import com.speedcam.app.map.MapThemeMode
-import com.speedcam.app.map.RadarMapCard
 import com.speedcam.app.map.VectorMapActions
 import com.speedcam.app.map.VectorMapData
 import com.speedcam.app.map.VectorMapScreen
@@ -83,13 +76,6 @@ import com.speedcam.app.sync.DatabaseSyncEngine
 import com.speedcam.app.sync.DatabaseSyncWorker
 import com.speedcam.app.sync.HazardReportSyncWorker
 import com.speedcam.app.sync.SyncResult
-import com.speedcam.app.ui.components.EmptyHazardCard
-import com.speedcam.app.ui.components.PrimaryHazardAlertCard
-import com.speedcam.app.ui.components.SecondaryHazardCard
-import com.speedcam.app.ui.components.SpecsSectionAlertCard
-import com.speedcam.app.ui.components.SpeedometerActions
-import com.speedcam.app.ui.components.SpeedometerCluster
-import com.speedcam.app.ui.theme.BrandPrimaryDark
 import com.speedcam.app.ui.theme.SpeedCamTheme
 import com.speedcam.app.ui.theme.SpeedSafe
 import com.speedcam.app.voice.VoicePackCatalogDialog
@@ -137,6 +123,7 @@ class MainActivity : ComponentActivity() {
     private var store: CameraStore? = null
 
     private val cameras = MutableStateFlow<List<Camera>>(emptyList())
+    private val totalCameraCount = MutableStateFlow(0)
     private val blocked = MutableStateFlow<List<LatLon>>(emptyList())
     private val sections = MutableStateFlow<List<SectionRecord>>(emptyList())
 
@@ -159,8 +146,6 @@ class MainActivity : ComponentActivity() {
     private var captureDistanceKm by mutableDoubleStateOf(0.0)
     private var minAlertSpeedKmh by mutableIntStateOf(5)
     private var transport by mutableStateOf(TransportProfile.COMMON)
-    private var hudEnabled by mutableStateOf(true)
-    private var hudAutoHide by mutableStateOf(false)
     private var outputMode by mutableStateOf(OutputMode.STANDARD)
     private var silentDuringCall by mutableStateOf(false)
     private var autoUpdateEnabled by mutableStateOf(true)
@@ -214,7 +199,7 @@ class MainActivity : ComponentActivity() {
                 intent: Intent?,
             ) {
                 when (intent?.action) {
-                    PipHelper.ACTION_PIP_MUTE -> HudOverlayManager.muteNearest(this@MainActivity)
+                    PipHelper.ACTION_PIP_MUTE -> DetectionState.update { it.copy(muted = !it.muted) }
                     PipHelper.ACTION_PIP_TOGGLE -> setDetectionEnabled(!DetectionState.state.value.running)
                 }
             }
@@ -229,11 +214,6 @@ class MainActivity : ComponentActivity() {
                 checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED
             continueStartup()
-        }
-
-    private val overlayPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            HudOverlayManager.sync(this)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -256,8 +236,6 @@ class MainActivity : ComponentActivity() {
         captureDistanceKm = profiles.captureDistanceKm
         minAlertSpeedKmh = profiles.minAlertSpeedKmh
         transport = profiles.transport
-        hudEnabled = profiles.hudEnabled
-        hudAutoHide = profiles.hudAutoHide
         outputMode = profiles.outputMode
         silentDuringCall = profiles.silentDuringCall
         autoUpdateEnabled = profiles.autoUpdateEnabled
@@ -398,10 +376,10 @@ class MainActivity : ComponentActivity() {
                 ShellState(
                     ui = detectionState,
                     cameras = cameras.collectAsStateWithLifecycle().value,
+                    totalCameraCount = totalCameraCount.collectAsStateWithLifecycle().value,
                     blocked = blocked.collectAsStateWithLifecycle().value,
                     sections = sections.collectAsStateWithLifecycle().value,
                     profiles = profiles,
-                    hudPermissionGranted = HudOverlay.canDrawOverlays(this),
                     isUpdating = isUpdating || isManualUpdating,
                     pendingReportCount = pendingCount,
                     isSyncingReports = isSyncing,
@@ -426,8 +404,6 @@ class MainActivity : ComponentActivity() {
                     captureDistanceKm = captureDistanceKm,
                     minAlertSpeedKmh = minAlertSpeedKmh,
                     transport = transport,
-                    hudEnabled = hudEnabled,
-                    hudAutoHide = hudAutoHide,
                     outputMode = outputMode,
                     silentDuringCall = silentDuringCall,
                     autoUpdateEnabled = autoUpdateEnabled,
@@ -518,21 +494,75 @@ class MainActivity : ComponentActivity() {
             onEnableChange = ::setDetectionEnabled,
             onBlock = ::block,
             onUnblock = ::unblock,
-            onRequestHudPermission = ::requestOverlayPermission,
-            onResetHudPosition = { HudOverlayManager.resetPosition(this) },
             onAutoUpdateChange = ::toggleAutoUpdate,
             onCheckForUpdates = { DatabaseSyncWorker.triggerImmediate(this) },
             onReportCamera = ::reportCamera,
             onSyncHazardOutbox = ::syncHazardOutbox,
             onClearSyncedReports = ::clearSyncedHazards,
-            onToggleMute = { HudOverlayManager.muteNearest(this) },
-            onBlockNearest = { HudOverlayManager.blockNearest(this) },
-            onReportHazard = { HudOverlayManager.reportHazard(this) },
+            onToggleMute = {
+                DetectionState.update { it.copy(muted = !it.muted) }
+            },
+            onBlockNearest = {
+                val nearest = DetectionState.state.value.nearest ?: return@ShellActions
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
+                    cameraStore.block(LatLon(nearest.latitude, nearest.longitude))
+                }
+            },
+            onReportHazard = {
+                val st = DetectionState.state.value
+                val lat = st.nearest?.latitude ?: st.currentLat ?: return@ShellActions
+                val lon = st.nearest?.longitude ?: st.currentLon ?: return@ShellActions
+                val report =
+                    HazardReportEntity(
+                        lat = lat,
+                        lon = lon,
+                        headingDeg = st.currentBearingDeg,
+                        cameraId = st.nearest?.cameraId,
+                        reportType =
+                            if (st.nearest != null) {
+                                HazardReportType.FALSE_POSITIVE.ordinal
+                            } else {
+                                HazardReportType.NEW_CAMERA.ordinal
+                            },
+                        speedLimitKmh = st.activeSection?.limitKmh ?: st.nearest?.limitKmh,
+                        comment = "Отметка водителя",
+                    )
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
+                    cameraStore.submitReport(report)
+                    HazardReportSyncWorker.triggerImmediate(this@MainActivity)
+                }
+            },
             onReportHazardType = { type ->
-                HudOverlayManager.reportSpecificHazard(this, type)
+                val st = DetectionState.state.value
+                val lat = st.currentLat ?: st.nearest?.latitude
+                val lon = st.currentLon ?: st.nearest?.longitude
+                if (lat != null && lon != null) {
+                    val report =
+                        HazardReportEntity(
+                            lat = lat,
+                            lon = lon,
+                            headingDeg = st.currentBearingDeg,
+                            cameraId = st.nearest?.cameraId,
+                            reportType = type.ordinal,
+                            speedLimitKmh = st.nearest?.limitKmh ?: st.activeSection?.limitKmh,
+                            comment =
+                                when (type) {
+                                    HazardReportType.DPS_PATROL -> "Засада ДПС (быстрая отметка)"
+                                    HazardReportType.MOBILE_TRIPOD -> "Мобильная тренога (быстрая отметка)"
+                                    HazardReportType.ROAD_ACCIDENT -> "Авария на дороге (быстрая отметка)"
+                                    else -> "Отметка водителя"
+                                },
+                        )
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
+                        cameraStore.submitReport(report)
+                        HazardReportSyncWorker.triggerImmediate(this@MainActivity)
+                    }
+                }
                 refreshCameraList()
             },
-            onToggleHud = { HudOverlayManager.toggle(this) },
             onContraCamDbChange = ::toggleContraCamDb,
             onSyncContraCam = ::syncContraCam,
             onAutoStartOnBluetoothChange = {
@@ -583,17 +613,6 @@ class MainActivity : ComponentActivity() {
             onTransportChange = {
                 transport = it
                 lifecycleScope.launch(Dispatchers.IO) { profiles.transport = it }
-            },
-            onHudEnabledChange = {
-                hudEnabled = it
-                HudOverlayManager.setHudEnabled(this, it)
-            },
-            onHudAutoHideChange = {
-                hudAutoHide = it
-                lifecycleScope.launch(Dispatchers.IO) {
-                    profiles.hudAutoHide = it
-                    HudOverlayManager.sync(this@MainActivity)
-                }
             },
             onOutputModeChange = {
                 outputMode = it
@@ -964,8 +983,6 @@ class MainActivity : ComponentActivity() {
         captureDistanceKm = profiles.captureDistanceKm
         minAlertSpeedKmh = profiles.minAlertSpeedKmh
         transport = profiles.transport
-        hudEnabled = profiles.hudEnabled
-        hudAutoHide = profiles.hudAutoHide
         outputMode = profiles.outputMode
         silentDuringCall = profiles.silentDuringCall
         autoUpdateEnabled = profiles.autoUpdateEnabled
@@ -979,7 +996,6 @@ class MainActivity : ComponentActivity() {
         refreshVoicePacks()
         refreshOfflineMapStats()
         refreshCameraList()
-        HudOverlayManager.sync(this)
         if (profiles.isEnabled && fineLocationGranted) ServiceController.start(this)
     }
 
@@ -994,6 +1010,7 @@ class MainActivity : ComponentActivity() {
                 cameraStore.refreshOverrides()
                 cameraStore.refreshSections()
                 cameras.value = cameraStore.allCameras()
+                totalCameraCount.value = cameraStore.cameraCount()
                 blocked.value = cameraStore.overrides.blocked
                 sections.value = cameraStore.sections
             }.onFailure { Log.w(TAG, "Could not load the camera list: ${it.message}") }
@@ -1064,17 +1081,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestOverlayPermission() {
-        runCatching {
-            overlayPermissionLauncher.launch(
-                Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName"),
-                ),
-            )
-        }
-    }
-
     // ------------------------------------------------------------- permissions
 
     private fun requestLocationThenStart() {
@@ -1132,7 +1138,6 @@ class MainActivity : ComponentActivity() {
 private enum class Tab(
     val label: String,
 ) {
-    STATUS("Спидометр"),
     MAP("Карта"),
     SETTINGS("Настройки"),
 }
@@ -1141,10 +1146,10 @@ private enum class Tab(
 private data class ShellState(
     val ui: com.speedcam.service.DetectionUiState,
     val cameras: List<Camera>,
+    val totalCameraCount: Int = 0,
     val blocked: List<LatLon>,
     val sections: List<SectionRecord> = emptyList(),
     val profiles: ProfileStore,
-    val hudPermissionGranted: Boolean,
     val isUpdating: Boolean = false,
     val pendingReportCount: Int = 0,
     val isSyncingReports: Boolean = false,
@@ -1169,8 +1174,6 @@ private data class ShellState(
     val captureDistanceKm: Double = 0.0,
     val minAlertSpeedKmh: Int = 5,
     val transport: TransportProfile = TransportProfile.COMMON,
-    val hudEnabled: Boolean = true,
-    val hudAutoHide: Boolean = false,
     val outputMode: OutputMode = OutputMode.STANDARD,
     val silentDuringCall: Boolean = false,
     val autoUpdateEnabled: Boolean = true,
@@ -1193,8 +1196,6 @@ private data class ShellActions(
     val onEnableChange: (Boolean) -> Unit,
     val onBlock: (CameraRow) -> Unit,
     val onUnblock: (CameraRow) -> Unit,
-    val onRequestHudPermission: () -> Unit,
-    val onResetHudPosition: () -> Unit,
     val onAutoUpdateChange: (Boolean) -> Unit,
     val onCheckForUpdates: () -> Unit,
     val onImportDatabaseFile: () -> Unit,
@@ -1207,7 +1208,6 @@ private data class ShellActions(
     val onBlockNearest: () -> Unit,
     val onReportHazard: () -> Unit,
     val onReportHazardType: (HazardReportType) -> Unit,
-    val onToggleHud: () -> Unit,
     val onContraCamDbChange: (Boolean) -> Unit,
     val onSyncContraCam: () -> Unit,
     val onAutoStartOnBluetoothChange: (Boolean) -> Unit,
@@ -1226,8 +1226,6 @@ private data class ShellActions(
     val onCaptureDistanceChange: (Double) -> Unit,
     val onMinAlertSpeedChange: (Int) -> Unit,
     val onTransportChange: (TransportProfile) -> Unit,
-    val onHudEnabledChange: (Boolean) -> Unit,
-    val onHudAutoHideChange: (Boolean) -> Unit,
     val onOutputModeChange: (OutputMode) -> Unit,
     val onSilentDuringCallChange: (Boolean) -> Unit,
     val onVoiceEngineChange: (VoiceEngine) -> Unit,
@@ -1252,7 +1250,7 @@ private fun AppShell(
     state: ShellState,
     actions: ShellActions,
 ) {
-    var tab by remember { mutableStateOf(Tab.STATUS) }
+    var tab by remember { mutableStateOf(Tab.MAP) }
     val context = LocalContext.current
     val initialCenter =
         remember(state.cameras) {
@@ -1284,9 +1282,7 @@ private fun AppShell(
         topBar = {
             AppTopBar(
                 running = state.ui.running,
-                hudEnabled = state.profiles.hudEnabled,
                 pipEnabled = state.pipEnabled,
-                onToggleHud = actions.onToggleHud,
                 onEnterPip = actions.onEnterPip,
             )
         },
@@ -1320,14 +1316,6 @@ private fun ShellTabContent(
     modifier: Modifier = Modifier,
 ) {
     when (tab) {
-        Tab.STATUS ->
-            StatusTab(
-                state = state,
-                actions = actions,
-                onOpenMap = { actions.onNavigateToTab(Tab.MAP) },
-                modifier = modifier,
-            )
-
         Tab.MAP ->
             VectorMapScreen(
                 mapState = mapState,
@@ -1356,6 +1344,7 @@ private fun ShellTabContent(
                         },
                     ),
                 useContraCamDb = state.useContraCamDb,
+                totalCameraCount = state.totalCameraCount,
                 modifier = modifier,
             )
 
@@ -1379,9 +1368,7 @@ private fun Camera.toCameraRow(): CameraRow =
 @Composable
 private fun AppTopBar(
     running: Boolean,
-    hudEnabled: Boolean,
     pipEnabled: Boolean,
-    onToggleHud: () -> Unit,
     onEnterPip: () -> Unit,
 ) {
     TopAppBar(
@@ -1419,19 +1406,6 @@ private fun AppTopBar(
                     )
                 }
             }
-            IconButton(onClick = onToggleHud) {
-                val tint =
-                    if (hudEnabled) {
-                        BrandPrimaryDark
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                Icon(
-                    imageVector = Icons.Default.Layers,
-                    contentDescription = "Плавающий HUD",
-                    tint = tint,
-                )
-            }
         },
     )
 }
@@ -1450,7 +1424,6 @@ private fun AppBottomBar(
                     Icon(
                         imageVector =
                             when (entry) {
-                                Tab.STATUS -> Icons.Default.Speed
                                 Tab.MAP -> Icons.Default.Map
                                 Tab.SETTINGS -> Icons.Default.Settings
                             },
@@ -1471,9 +1444,6 @@ private fun buildSettingsState(state: ShellState): SettingsState {
         captureDistanceKm = state.captureDistanceKm,
         minAlertSpeedKmh = state.minAlertSpeedKmh,
         transport = state.transport,
-        hudEnabled = state.hudEnabled,
-        hudAutoHide = state.hudAutoHide,
-        hudPermissionGranted = state.hudPermissionGranted,
         outputMode = state.outputMode,
         silentDuringCall = state.silentDuringCall,
         cameraCount = state.ui.cameraCount,
@@ -1529,10 +1499,6 @@ private fun buildSettingsActions(actions: ShellActions): SettingsActions =
         onCaptureDistanceChange = actions.onCaptureDistanceChange,
         onMinAlertSpeedChange = actions.onMinAlertSpeedChange,
         onTransportChange = actions.onTransportChange,
-        onHudEnabledChange = actions.onHudEnabledChange,
-        onHudAutoHideChange = actions.onHudAutoHideChange,
-        onRequestHudPermission = actions.onRequestHudPermission,
-        onResetHudPosition = actions.onResetHudPosition,
         onOutputModeChange = actions.onOutputModeChange,
         onSilentDuringCallChange = actions.onSilentDuringCallChange,
         onVoiceEngineChange = actions.onVoiceEngineChange,
@@ -1585,74 +1551,3 @@ private fun SettingsTab(
 
 /** Attribution is not optional: ODbL 1.0 requires crediting OpenStreetMap. */
 private const val DATA_SOURCE_NOTE = "OpenStreetMap, ODbL 1.0. Rebuilt by tools/import."
-
-@Composable
-private fun StatusTab(
-    state: ShellState,
-    actions: ShellActions,
-    onOpenMap: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        // Hero Speedometer & Radar Cluster
-        item {
-            SpeedometerCluster(
-                state = state.ui,
-                actions =
-                    SpeedometerActions(
-                        onEnableChange = actions.onEnableChange,
-                        onToggleMute = actions.onToggleMute,
-                        onReportHazard = actions.onReportHazard,
-                        onToggleHud = actions.onToggleHud,
-                    ),
-            )
-        }
-
-        // Lightweight Vector Radar Map Preview Card
-        item {
-            RadarMapCard(
-                detectionState = state.ui,
-                cameras = state.cameras,
-                sections = state.sections,
-                onExpandMap = onOpenMap,
-            )
-        }
-
-        // Active Average Speed Zone (SPECS Corridor)
-        state.ui.activeSection?.let { section ->
-            item {
-                SpecsSectionAlertCard(section = section)
-            }
-        }
-
-        // Primary Upcoming Hazard
-        val nearest = state.ui.nearest
-        if (nearest != null) {
-            item {
-                PrimaryHazardAlertCard(
-                    hazard = nearest,
-                    overLimit = state.ui.overLimit,
-                    onMute = actions.onToggleMute,
-                    onBlock = actions.onBlockNearest,
-                )
-            }
-        }
-
-        // Secondary Upcoming Hazard
-        state.ui.second?.let { second ->
-            item {
-                SecondaryHazardCard(hazard = second)
-            }
-        }
-
-        // Clear Road State
-        if (nearest == null && state.ui.activeSection == null) {
-            item {
-                EmptyHazardCard(radarActive = state.ui.running)
-            }
-        }
-    }
-}

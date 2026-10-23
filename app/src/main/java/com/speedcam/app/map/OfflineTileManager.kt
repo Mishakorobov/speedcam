@@ -15,6 +15,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -34,6 +36,7 @@ class OfflineTileManager(
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val profiles = ProfileStore(context)
+    private val downloadSemaphore = Semaphore(4)
 
     val mapsDir = File(context.filesDir, "maps").apply { mkdirs() }
     val osmTileCache = OsmTileCache(context)
@@ -117,6 +120,7 @@ class OfflineTileManager(
         if (cached != null) return cached
 
         if (!inFlight.contains(key)) {
+            if (inFlight.size > 24) return null
             inFlight.add(key)
             scope.launch {
                 try {
@@ -145,9 +149,11 @@ class OfflineTileManager(
 
         // 3. Fallback: Download from high-contrast tile server if network is available
         if (bytes == null && isNetworkAvailable()) {
-            bytes = downloadTile(zoom, x, y)
-            if (bytes != null && bytes.isNotEmpty()) {
-                osmTileCache.putTile(zoom, x, y, bytes)
+            downloadSemaphore.withPermit {
+                bytes = downloadTile(zoom, x, y)
+                if (bytes != null && bytes.isNotEmpty()) {
+                    osmTileCache.putTile(zoom, x, y, bytes)
+                }
             }
         }
 
