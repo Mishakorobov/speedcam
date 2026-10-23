@@ -146,13 +146,15 @@ jobs:
           fi
 
       - name: Commit updated manifest to main branch
+        continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/manifest.json
           if ! git diff --staged --quiet; then
             git commit -m "chore(data): update camera database manifest to v${VERSION} [skip ci]"
-            git push origin main
+            git pull --rebase origin main || true
+            git push origin HEAD:main || true
           else
             echo "Manifest already up to date, no commit needed."
           fi
