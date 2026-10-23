@@ -2,8 +2,8 @@ name: "Camera Database Release"
 
 on:
   schedule:
-    # Run every Sunday at 03:00 UTC
-    - cron: '0 3 * * 0'
+    # Run daily at 03:00 UTC
+    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       force_download:
