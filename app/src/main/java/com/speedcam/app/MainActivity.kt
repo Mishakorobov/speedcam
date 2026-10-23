@@ -707,9 +707,9 @@ class MainActivity : ComponentActivity() {
                         val message = "Активирована база ContraCam ($contraCount камер)"
                         Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
                     }
+                    ServiceController.reloadDatabase(this@MainActivity)
+                    refreshCameraList()
                 }
-                ServiceController.reloadDatabase(this@MainActivity)
-                refreshCameraList()
             }
         } else {
             ServiceController.reloadDatabase(this)
@@ -745,6 +745,18 @@ class MainActivity : ComponentActivity() {
                 },
                 onFailure = { error ->
                     profiles.lastContraCamStatus = "Ошибка: ${error.message}"
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val count = cameraStore.cameraDao.countBySource(CameraSource.CONTRACAM.ordinal)
+                        if (count == 0) {
+                            withContext(Dispatchers.Main) {
+                                profiles.useContraCamDb = false
+                                useContraCamDb = false
+                                cameraStore.useContraCamDb = false
+                                ServiceController.reloadDatabase(this@MainActivity)
+                                refreshCameraList()
+                            }
+                        }
+                    }
                     Toast
                         .makeText(
                             this@MainActivity,
@@ -1161,6 +1173,7 @@ private fun ShellTabContent(
                             actions.onReportHazardType(type)
                         },
                     ),
+                useContraCamDb = state.useContraCamDb,
                 modifier = modifier,
             )
 

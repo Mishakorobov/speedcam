@@ -6,7 +6,10 @@ import com.speedcam.core.detect.CameraQuery
 import com.speedcam.core.detect.DetectionEngine
 import com.speedcam.core.detect.SectionQuery
 import com.speedcam.core.detect.SectionRecord
+import com.speedcam.core.geo.BoundingBox
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 
 /**
  * The assembly point for the camera data layer.
@@ -72,11 +75,12 @@ class CameraStore(
     private val blockingQuery = BlockingCameraQuery(query)
 
     /** How many cameras are loaded, for the settings screen. */
-    suspend fun cameraCount(): Int {
-        val hasContra = runCatching { database.cameraDao().hasContraCamCameras() }.getOrDefault(false)
-        val active = if (useContraCamDb && hasContra) 1 else 0
-        return runCatching { database.cameraDao().countActive(active) }.getOrDefault(0)
-    }
+    suspend fun cameraCount(): Int =
+        withContext(Dispatchers.IO) {
+            val hasContra = runCatching { database.cameraDao().hasContraCamCameras() }.getOrDefault(false)
+            val active = if (useContraCamDb && hasContra) 1 else 0
+            runCatching { database.cameraDao().countActive(active) }.getOrDefault(0)
+        }
 
     /**
      * Every camera, for the browser screen.
@@ -86,14 +90,38 @@ class CameraStore(
      * for changes the driver did not make.
      *
      * Suspend because Room refuses main-thread access and the UI calls this on resume.
+     * Keyset pagination is used to prevent Android CursorWindow (2 MB) allocation limits with 50k+ cameras.
      */
-    suspend fun allCameras(): List<Camera> {
-        val hasContra = runCatching { database.cameraDao().hasContraCamCameras() }.getOrDefault(false)
-        val active = if (useContraCamDb && hasContra) 1 else 0
-        return runCatching { database.cameraDao().allCamerasActive(active) }
-            .getOrDefault(emptyList())
-            .map(CameraMappers::toDomain)
-    }
+    suspend fun allCameras(): List<Camera> =
+        withContext(Dispatchers.IO) {
+            val hasContra = runCatching { database.cameraDao().hasContraCamCameras() }.getOrDefault(false)
+            val active = if (useContraCamDb && hasContra) 1 else 0
+            val results = ArrayList<CameraEntity>()
+            var lastId = 0L
+            val chunkSize = 1000
+            val maxLimit = 5000
+            while (results.size < maxLimit) {
+                val chunk =
+                    runCatching {
+                        database.cameraDao().camerasActivePaged(active, lastId, chunkSize)
+                    }.getOrDefault(emptyList())
+                if (chunk.isEmpty()) break
+                results.addAll(chunk)
+                lastId = chunk.last().id
+                if (chunk.size < chunkSize) break
+            }
+            results.map(CameraMappers::toDomain)
+        }
+
+    /** Returns cameras inside [box] matching the active database source (ContraCam vs OSM). */
+    suspend fun camerasInBox(box: BoundingBox): List<Camera> =
+        withContext(Dispatchers.IO) {
+            val hasContra = runCatching { database.cameraDao().hasContraCamCameras() }.getOrDefault(false)
+            val active = useContraCamDb && hasContra
+            runCatching {
+                database.cameraDao().inBoxActiveSource(box, active).map(CameraMappers::toDomain)
+            }.getOrDefault(emptyList())
+        }
 
     /** The override set currently in force. */
     @Volatile

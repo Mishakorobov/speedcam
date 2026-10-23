@@ -277,9 +277,11 @@ private fun findTappedCamera(
     viewport: MapViewport,
     hitRadius: Float,
 ): Camera? {
+    val bounds = MercatorProjection.viewportBoundingBox(viewport)
     var nearest: Camera? = null
     var minDistance = Double.MAX_VALUE
     for (cam in cameras) {
+        if (cam.position !in bounds) continue
         val (px, py) = MercatorProjection.project(cam.position, viewport)
         val dx = tap.x - px
         val dy = tap.y - py
@@ -512,9 +514,11 @@ private fun DrawScope.drawCameras(
     viewport: MapViewport,
     textMeasurer: TextMeasurer,
 ) {
+    val bounds = MercatorProjection.viewportBoundingBox(viewport)
     val visible =
         params.cameras.filter { cam ->
-            params.filterKind == null || cam.kind == params.filterKind
+            (params.filterKind == null || cam.kind == params.filterKind) &&
+                (cam.position in bounds)
         }
 
     for (cam in visible) {

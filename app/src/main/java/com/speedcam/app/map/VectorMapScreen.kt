@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,6 +76,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.speedcam.app.SpeedCamApp
 import com.speedcam.app.ui.components.CompactSpeedLimitBadge
 import com.speedcam.app.ui.theme.SpeedDanger
 import com.speedcam.app.util.toRussianTitle
@@ -97,19 +99,28 @@ fun VectorMapScreen(
     detectionState: DetectionUiState,
     mapData: VectorMapData,
     actions: VectorMapActions,
+    useContraCamDb: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var roads by remember { mutableStateOf<List<VectorRoad>>(emptyList()) }
     var roadStatus by remember { mutableStateOf(RoadDataStatus.LOADED) }
     var showCameraSheet by remember { mutableStateOf(false) }
+    var dynamicCameras by remember { mutableStateOf<List<Camera>?>(null) }
+    var totalDbCameras by remember { mutableIntStateOf(0) }
 
     val context = LocalContext.current
+    val cameraStore = remember { SpeedCamApp.cameraStore(context) }
     val roadRepo = remember { VectorRoadRepository(context) }
-    val tileManager =
-        remember {
-            com.speedcam.app.SpeedCamApp
-                .offlineTileManager(context)
-        }
+    val tileManager = remember { SpeedCamApp.offlineTileManager(context) }
+
+    // Dynamic camera loading for active visible bounding box (avoids loading 50k+ cameras into RAM)
+    LaunchedEffect(mapState.centerLat, mapState.centerLon, mapState.zoom, mapData.cameras.size, useContraCamDb) {
+        cameraStore.useContraCamDb = useContraCamDb
+        val box = mapState.computeVisibleBoundingBox(1080f, 1920f)
+        val inBox = cameraStore.camerasInBox(box)
+        dynamicCameras = inBox
+        totalDbCameras = cameraStore.cameraCount()
+    }
 
     // Synchronize vehicle heading and coordinates with map viewport
     LaunchedEffect(
@@ -180,15 +191,20 @@ fun VectorMapScreen(
         }
     }
 
+    val activeCameras =
+        remember(dynamicCameras, mapData.cameras) {
+            dynamicCameras ?: mapData.cameras
+        }
+
     val completeMapData =
-        remember(mapData.cameras, mapData.sections, mapData.blocked, roads) {
+        remember(activeCameras, mapData.sections, mapData.blocked, roads) {
             val combinedRoads =
                 if (roads.isEmpty() && mapData.sections.isNotEmpty()) {
-                    SyntheticRoadCorridors.createSectionCorridors(mapData.sections, mapData.cameras)
+                    SyntheticRoadCorridors.createSectionCorridors(mapData.sections, activeCameras)
                 } else {
                     roads
                 }
-            VectorMapData(mapData.cameras, mapData.sections, combinedRoads, mapData.blocked)
+            VectorMapData(activeCameras, mapData.sections, combinedRoads, mapData.blocked)
         }
 
     VectorMapScreenLayout(
@@ -200,6 +216,8 @@ fun VectorMapScreen(
         roadStatus = roadStatus,
         showCameraSheet = showCameraSheet,
         onToggleCameraSheet = { showCameraSheet = it },
+        totalCameraCount = if (totalDbCameras > 0) totalDbCameras else mapData.cameras.size,
+        catalogCameras = mapData.cameras,
         modifier = modifier,
     )
 }
@@ -214,9 +232,13 @@ private fun VectorMapScreenLayout(
     roadStatus: RoadDataStatus,
     showCameraSheet: Boolean,
     onToggleCameraSheet: (Boolean) -> Unit,
+    totalCameraCount: Int = 0,
+    catalogCameras: List<Camera> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+
+    val displayCount = if (totalCameraCount > 0) totalCameraCount else mapData.cameras.size
 
     Box(modifier = modifier.fillMaxSize()) {
         VectorMapCanvas(
@@ -231,7 +253,7 @@ private fun VectorMapScreenLayout(
         Column(
             modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = 10.dp),
         ) {
-            MapTopHudHeader(detectionState, mapData.cameras.size, roadStatus)
+            MapTopHudHeader(detectionState, displayCount, roadStatus)
             MapFilterChipsRow(mapState.filterKind) { mapState.filterKind = it }
         }
 
@@ -272,7 +294,7 @@ private fun VectorMapScreenLayout(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Камеры (${mapData.cameras.size})",
+                            text = "Камеры ($displayCount)",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
@@ -313,7 +335,7 @@ private fun VectorMapScreenLayout(
                     mapState.center
                 }
             CameraListBottomSheet(
-                cameras = mapData.cameras,
+                cameras = if (catalogCameras.isNotEmpty()) catalogCameras else mapData.cameras,
                 blocked = mapData.blocked,
                 userLocation = userLoc,
                 onDismissRequest = { onToggleCameraSheet(false) },

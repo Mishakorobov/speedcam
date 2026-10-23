@@ -117,11 +117,13 @@ object ContraCamBinaryParser {
         val b5 = data[offset + 5].toInt() and 0xFF
 
         val lat = ((b0 shl 16) or (b1 shl 8) or b2) / DEGREE_SCALE
-        val lon = ((b3 shl 16) or (b4 shl 8) or b5) / DEGREE_SCALE
+        val rawLon = ((b3 shl 16) or (b4 shl 8) or b5) / DEGREE_SCALE
 
-        if (lat !in MIN_LAT..MAX_LAT || lon !in MIN_LON..MAX_LON) {
+        if (lat !in MIN_LAT..MAX_LAT || rawLon !in MIN_LON..MAX_LON) {
             return null
         }
+        // Normalize coordinates crossing 180° antimeridian (e.g. Chukotka) to WGS-84 [-180.0, 180.0]
+        val lon = if (rawLon > 180.0) rawLon - 360.0 else rawLon
 
         val facingDeg = ((header.sub shr 5) and 7) * OCTANT_DEGREES
         val speedCode = header.sub and 0x1F

@@ -136,6 +136,22 @@ interface CameraDao {
     )
     suspend fun allCamerasActive(useContraCam: Int): List<CameraEntity>
 
+    @Query(
+        """
+        SELECT * FROM camera
+        WHERE ((:useContraCam = 1 AND source = 3)
+           OR (:useContraCam = 0 AND source != 3))
+          AND id > :afterId
+        ORDER BY id ASC
+        LIMIT :limit
+        """,
+    )
+    suspend fun camerasActivePaged(
+        useContraCam: Int,
+        afterId: Long,
+        limit: Int,
+    ): List<CameraEntity>
+
     @Query("SELECT * FROM camera WHERE limit_kmh >= :minLimit ORDER BY limit_kmh ASC")
     fun observeAtOrAboveLimit(minLimit: Int): Flow<List<CameraEntity>>
 
@@ -157,7 +173,9 @@ interface CameraDao {
         cameras: List<CameraEntity>,
     ) {
         deleteBySource(source)
-        upsertAll(cameras)
+        cameras.chunked(80).forEach { chunk ->
+            upsertAll(chunk)
+        }
     }
 }
 
@@ -324,10 +342,18 @@ class CameraQueryAdapter(
  * forward-versioned ordinal degrades to a default instead of throwing.
  */
 object CameraMappers {
-    fun toDomain(e: CameraEntity): Camera =
-        Camera(
+    fun toDomain(e: CameraEntity): Camera {
+        val safeLat = e.lat.coerceIn(-90.0, 90.0)
+        val safeLon =
+            when {
+                e.lon > 180.0 -> e.lon - 360.0
+                e.lon < -180.0 -> e.lon + 360.0
+                else -> e.lon
+            }.coerceIn(-180.0, 180.0)
+
+        return Camera(
             id = e.id,
-            position = LatLon(e.lat, e.lon),
+            position = LatLon(safeLat, safeLon),
             source = enumOrDefault(CameraSource.entries, e.source, CameraSource.OSM),
             externalId = e.externalId,
             limitKmh = e.limitKmh,
@@ -338,6 +364,7 @@ object CameraMappers {
             sourceDetail = e.sourceDetail,
             checkDate = e.checkDate,
         )
+    }
 
     fun toDomainList(entities: List<CameraEntity>): List<Camera> = entities.map(::toDomain)
 
