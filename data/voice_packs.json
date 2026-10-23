@@ -1,60 +1,60 @@
 {
   "version": 1,
-  "updatedAt": "2026-10-23T16:30:00Z",
+  "updatedAt": "2026-10-23T17:00:00Z",
   "packs": [
     {
       "id": "elena_standard",
-      "name": "Стандартный диктор (Елена)",
+      "name": "Елена (стандартный)",
       "author": "SpeedCam Community",
-      "description": "Классический студийный женский голос. Четкая артикуляция и спокойные предупреждения без лишних шумов.",
+      "description": "Четкий женский голос для спидометра. Подробные предупреждения обо всех типах камер.",
       "language": "ru",
       "downloadUrl": "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/elena_standard.zip",
-      "sizeMb": 1.4,
-      "clipCount": 48,
-      "license": "CC-BY 4.0 / Свободное использование"
+      "sizeMb": 2.2,
+      "clipCount": 32,
+      "license": "CC-BY 4.0 / Свободная"
     },
     {
       "id": "oxana_navigator",
-      "name": "Оксана (Навигатор)",
+      "name": "Оксана (навигатор)",
       "author": "Open Voice Project",
-      "description": "Популярный голос навигации для водителей с акцентом на своевременное предупреждение и безопасность.",
+      "description": "Краткие динамичные фразы в стиле навигатора для быстрой реакции на дороге.",
       "language": "ru",
       "downloadUrl": "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/oxana_navigator.zip",
-      "sizeMb": 1.8,
-      "clipCount": 52,
-      "license": "Public Domain / Бесплатно"
+      "sizeMb": 1.0,
+      "clipCount": 32,
+      "license": "Public Domain / Открытая"
     },
     {
       "id": "dmitry_brutal",
-      "name": "Дмитрий (Командный)",
+      "name": "Дмитрий (брутальный)",
       "author": "Road Safety Media",
-      "description": "Уверенный мужской командный голос. Лаконичные строгие фразы для быстрой реакции на трассе.",
+      "description": "Уверенный мужской голос с акцентом на безопасность и своевременное снижение скорости.",
       "language": "ru",
       "downloadUrl": "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/dmitry_brutal.zip",
-      "sizeMb": 1.6,
-      "clipCount": 46,
-      "license": "CC-BY-SA / Бесплатно"
+      "sizeMb": 2.7,
+      "clipCount": 32,
+      "license": "CC-BY-SA / Свободная"
     },
     {
       "id": "retro_humor",
-      "name": "Веселый штурман (Юмор)",
+      "name": "Ретро-юмор",
       "author": "Auto Club CIS",
-      "description": "Непринужденные фразы с дорожным юмором для комфортных дальних поездок.",
+      "description": "Ироничные ретро-предупреждения для нескучных дальних поездок.",
       "language": "ru",
       "downloadUrl": "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/retro_humor.zip",
-      "sizeMb": 2.1,
-      "clipCount": 54,
+      "sizeMb": 1.1,
+      "clipCount": 32,
       "license": "Free Non-Commercial"
     },
     {
       "id": "alex_english",
-      "name": "English Navigator (Alex)",
+      "name": "Alex (English Navigator)",
       "author": "Global SpeedCam",
       "description": "Concise and clear English alerts for speed limits, red lights and highway cameras.",
       "language": "en",
       "downloadUrl": "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/alex_english.zip",
-      "sizeMb": 1.3,
-      "clipCount": 42,
+      "sizeMb": 1.6,
+      "clipCount": 32,
       "license": "MIT / Open Data"
     }
   ]

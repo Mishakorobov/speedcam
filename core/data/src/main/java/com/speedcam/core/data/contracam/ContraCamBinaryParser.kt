@@ -7,7 +7,7 @@ import java.io.File
 import java.io.InputStream
 
 /**
- * Fast zero-dependency streaming binary parser for ContraCam proprietary `map.dat` archives.
+ * Fast zero-dependency streaming binary and text parser for ContraCam speed camera archives.
  *
  * ContraCam speed camera binary archives use a compact format:
  * - Records start with `0xA9` ([CameraKind.FIXED] / RTSpeedCamera).
@@ -17,17 +17,19 @@ import java.io.InputStream
  * - 6 bytes: 24-bit fixed point coordinates with 16 fractional bits:
  *     lat = (b0 shl 16 or b1 shl 8 or b2) / 65536.0
  *     lon = (b3 shl 16 or b4 shl 8 or b5) / 65536.0
- *   providing ~1.7m precision on the Earth ellipsoid.
+ *
+ * Also safely detects and rejects proprietary encrypted Vestigo disk images (to prevent
+ * scraping unrelated road topology nodes), and parses standard PocketGIS/Navitel CSV exports.
  */
 object ContraCamBinaryParser {
     private const val SPEEDCAM_RECORD_TAG = 0xA9.toByte()
     private const val DEGREE_SCALE = 65536.0
     private const val OCTANT_DEGREES = 45.0
 
-    private const val MIN_LAT = 30.0
-    private const val MAX_LAT = 85.0
-    private const val MIN_LON = 10.0
-    private const val MAX_LON = 190.0
+    private const val MIN_LAT = 35.0
+    private const val MAX_LAT = 82.0
+    private const val MIN_LON = 19.0
+    private const val MAX_LON = 180.0
 
     private val SPEED_CODE_MAP =
         mapOf(
@@ -61,6 +63,22 @@ object ContraCamBinaryParser {
         data: ByteArray,
         checkDate: String? = null,
     ): List<CameraEntity> {
+        if (data.isEmpty()) return emptyList()
+
+        // Check if data is a Vestigo disk container (e.g. map.dat)
+        val headerPrefix = if (data.size >= 32) String(data, 0, minOf(data.size, 64), Charsets.ISO_8859_1) else ""
+        if (headerPrefix.contains("VESTIGO") || headerPrefix.contains("XVESTIGO")) {
+            // map.dat is a Vestigo proprietary disk image container.
+            // Raw 0xA9 scanning yields false positive road topology nodes in Siberia.
+            // Return empty list so caller can fall back to the verified road-aligned speed camera dataset.
+            return emptyList()
+        }
+
+        // Check if data is standard text / CSV format (e.g. speedcam.txt / PocketGIS / Navitel / iGO)
+        if (isTextFormat(data)) {
+            return parseTextSpeedcam(data, checkDate)
+        }
+
         val result = ArrayList<CameraEntity>(data.size / 300)
         var p = 0
         val dataLen = data.size
@@ -83,6 +101,85 @@ object ContraCamBinaryParser {
             }
         }
         return result
+    }
+
+    private fun isTextFormat(data: ByteArray): Boolean {
+        val checkLen = minOf(data.size, 1024)
+        var asciiCount = 0
+        for (i in 0 until checkLen) {
+            val b = data[i].toInt() and 0xFF
+            if (b in 32..126 || b == 10 || b == 13 || b == 9) {
+                asciiCount++
+            }
+        }
+        return asciiCount.toDouble() / checkLen > 0.85
+    }
+
+    private fun parseTextSpeedcam(
+        data: ByteArray,
+        checkDate: String?,
+    ): List<CameraEntity> {
+        val text = String(data, Charsets.UTF_8)
+        val list = ArrayList<CameraEntity>()
+        var lineNum = 0
+        for (rawLine in text.lineSequence()) {
+            val line = rawLine.trim()
+            if (line.isBlank() || line.startsWith("#") || line.startsWith("//") || line.startsWith("IDX")) {
+                continue
+            }
+            lineNum++
+            val parts = line.split(Regex("[,;\t]")).map { it.trim() }
+            if (parts.size >= 5) {
+                val p0 = parts[0].toDoubleOrNull()
+                val p1 = parts[1].toDoubleOrNull()
+                val p2 = parts[2].toDoubleOrNull()
+                val p3 = parts[3].toIntOrNull()
+                val p4 = parts[4].toIntOrNull()
+
+                var lat: Double? = null
+                var lon: Double? = null
+                var limitKmh: Int? = null
+                var kindOrdinal = CameraKind.FIXED.ordinal
+                var facingDeg: Double? = null
+
+                if (p1 != null && p2 != null) {
+                    if (p1 in 19.0..180.0 && p2 in 35.0..82.0) {
+                        lon = p1
+                        lat = p2
+                        kindOrdinal = mapSubTypeToKind(p3 ?: 1).ordinal
+                        limitKmh = p4?.takeIf { it in 10..150 }
+                        if (parts.size >= 7) {
+                            facingDeg = parts[6].toDoubleOrNull()
+                        }
+                    } else if (p0 != null && p0 in 35.0..82.0 && p1 in 19.0..180.0) {
+                        lat = p0
+                        lon = p1
+                        limitKmh = p2.toInt().takeIf { it in 10..150 }
+                        kindOrdinal = mapSubTypeToKind(p3 ?: 1).ordinal
+                        if (p4 != null) facingDeg = p4.toDouble()
+                    }
+                }
+
+                if (lat != null && lon != null) {
+                    list.add(
+                        CameraEntity(
+                            source = CameraSource.CONTRACAM.ordinal,
+                            externalId = "contracam_$lineNum",
+                            lat = lat,
+                            lon = lon,
+                            limitKmh = limitKmh,
+                            kind = kindOrdinal,
+                            facingDeg = facingDeg,
+                            dirCount = 1,
+                            operator = "ContraCam",
+                            sourceDetail = "text_import",
+                            checkDate = checkDate,
+                        ),
+                    )
+                }
+            }
+        }
+        return list
     }
 
     private fun readVarint(
@@ -166,7 +263,7 @@ object ContraCamBinaryParser {
         }
 
     /**
-     * Parses cameras from a [file] containing `map.dat`.
+     * Parses cameras from a [file] containing `map.dat` or `speedcam.txt`.
      */
     fun parse(
         file: File,

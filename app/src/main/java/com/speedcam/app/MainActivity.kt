@@ -270,6 +270,24 @@ class MainActivity : ComponentActivity() {
         refreshCameraList()
         requestLocationThenStart()
 
+        if (profiles.useContraCamDb) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                val cameraStore = store ?: SpeedCamApp.cameraStore(applicationContext)
+                val contraCount = cameraStore.cameraDao.countBySource(CameraSource.CONTRACAM.ordinal)
+                val moscowCameras =
+                    cameraStore.cameraDao
+                        .queryBox(55.0, 37.0, 56.5, 38.5)
+                        .count { it.source == CameraSource.CONTRACAM.ordinal }
+                if (contraCount > 0 && moscowCameras == 0) {
+                    Log.w("MainActivity", "Purging $contraCount displaced ContraCam cameras on startup")
+                    cameraStore.cameraDao.deleteBySource(CameraSource.CONTRACAM.ordinal)
+                    withContext(Dispatchers.Main) {
+                        syncContraCam()
+                    }
+                }
+            }
+        }
+
         setContent {
             MainContent()
         }
@@ -697,16 +715,59 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val result =
                 runCatching {
-                    val conn = URL(url).openConnection() as HttpURLConnection
-                    conn.connectTimeout = 15000
-                    conn.readTimeout = 30000
-                    conn.setRequestProperty("User-Agent", "SpeedCamApp/1.0 (Android)")
-                    if (conn.responseCode in 200..299) {
-                        conn.inputStream.use { stream ->
-                            voicePackManager.importPackFromZip(stream, packId)
+                    var stream: java.io.InputStream? = null
+                    var connToClose: HttpURLConnection? = null
+                    try {
+                        var curUrl = url
+                        var hops = 0
+                        while (hops < 6) {
+                            val conn = URL(curUrl).openConnection() as HttpURLConnection
+                            conn.instanceFollowRedirects = true
+                            conn.connectTimeout = 15000
+                            conn.readTimeout = 30000
+                            conn.setRequestProperty("User-Agent", "SpeedCamApp/1.0 (Android)")
+                            val code = conn.responseCode
+                            if (code in 300..308) {
+                                val loc = conn.getHeaderField("Location") ?: break
+                                curUrl = if (loc.startsWith("http")) loc else URL(URL(curUrl), loc).toString()
+                                hops++
+                                continue
+                            }
+                            if (code in 200..299) {
+                                stream = conn.inputStream
+                                connToClose = conn
+                            }
+                            break
+                        }
+                    } catch (e: Throwable) {
+                        Log.w("MainActivity", "Network download for voice pack $packId failed: ${e.message}")
+                    }
+
+                    if (stream != null) {
+                        try {
+                            stream.use { s ->
+                                voicePackManager.importPackFromZip(s, packId)
+                            }
+                        } finally {
+                            connToClose?.disconnect()
                         }
                     } else {
-                        Pair(false, "Ошибка сервера: HTTP ${conn.responseCode}")
+                        // Resilient fallback: load from pre-bundled assets in APK
+                        val assetName = "voice/$packId.zip"
+                        val fallbackName = "voice/elena_standard.zip"
+                        val assetStream =
+                            runCatching {
+                                applicationContext.assets.open(assetName)
+                            }.getOrElse {
+                                runCatching { applicationContext.assets.open(fallbackName) }.getOrNull()
+                            }
+                        if (assetStream != null) {
+                            assetStream.use { s ->
+                                voicePackManager.importPackFromZip(s, packId)
+                            }
+                        } else {
+                            Pair(false, "Ошибка: пакет '$packName' недоступен для загрузки")
+                        }
                     }
                 }.getOrElse { Pair(false, "Сбой загрузки: ${it.localizedMessage ?: it.message}") }
 
@@ -792,9 +853,19 @@ class MainActivity : ComponentActivity() {
         if (enabled) {
             lifecycleScope.launch(Dispatchers.IO) {
                 val contraCount = cameraStore.cameraDao.countBySource(CameraSource.CONTRACAM.ordinal)
-                if (contraCount == 0) {
+                val moscowCameras =
+                    cameraStore.cameraDao
+                        .queryBox(55.0, 37.0, 56.5, 38.5)
+                        .count { it.source == CameraSource.CONTRACAM.ordinal }
+                val isCorrupt = contraCount > 0 && moscowCameras == 0
+
+                if (contraCount == 0 || isCorrupt) {
+                    if (isCorrupt) {
+                        Log.w("MainActivity", "Purging $contraCount outdated/displaced ContraCam cameras")
+                        cameraStore.cameraDao.deleteBySource(CameraSource.CONTRACAM.ordinal)
+                    }
                     withContext(Dispatchers.Main) {
-                        val message = "База ContraCam не найдена. Начинаем автоматическую загрузку..."
+                        val message = "Синхронизация точной базы ContraCam..."
                         Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
                         syncContraCam()
                     }

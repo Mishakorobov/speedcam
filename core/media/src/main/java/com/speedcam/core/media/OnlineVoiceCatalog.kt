@@ -15,7 +15,7 @@ data class CatalogVoicePack(
     val downloadUrl: String,
     val approximateSizeMb: Float,
     val clipCount: Int,
-    val license: String = "Бесплатно (Creative Commons / Open)",
+    val license: String = "Открытая (Creative Commons / Open)",
 )
 
 object OnlineVoiceCatalog {
@@ -29,61 +29,61 @@ object OnlineVoiceCatalog {
         listOf(
             CatalogVoicePack(
                 id = "elena_standard",
-                name = "Стандартный диктор (Елена)",
+                name = "Елена (стандартный)",
                 author = "SpeedCam Community",
-                description = "Классический студийный женский голос. Четкая артикуляция и спокойные предупреждения.",
+                description = "Четкий женский голос для спидометра. Подробные предупреждения обо всех типах камер.",
                 language = "ru",
                 downloadUrl =
                     "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/elena_standard.zip",
-                approximateSizeMb = 1.4f,
+                approximateSizeMb = 2.2f,
                 clipCount = 48,
-                license = "CC-BY 4.0 / Свободное использование",
+                license = "CC-BY 4.0 / Свободная",
             ),
             CatalogVoicePack(
                 id = "oxana_navigator",
-                name = "Оксана (Навигатор)",
+                name = "Оксана (навигатор)",
                 author = "Open Voice Project",
-                description = "Популярный голос навигации для водителей с акцентом на безопасность.",
+                description = "Краткие динамичные фразы в стиле навигатора для быстрой реакции на дороге.",
                 language = "ru",
                 downloadUrl =
                     "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/oxana_navigator.zip",
-                approximateSizeMb = 1.8f,
+                approximateSizeMb = 1.0f,
                 clipCount = 52,
-                license = "Public Domain / Бесплатно",
+                license = "Public Domain / Открытая",
             ),
             CatalogVoicePack(
                 id = "dmitry_brutal",
-                name = "Дмитрий (Командный)",
+                name = "Дмитрий (брутальный)",
                 author = "Road Safety Media",
-                description = "Уверенный мужской голос. Лаконичные строгие фразы для быстрой реакции на трассе.",
+                description = "Уверенный мужской голос с акцентом на безопасность и своевременное снижение скорости.",
                 language = "ru",
                 downloadUrl =
                     "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/dmitry_brutal.zip",
-                approximateSizeMb = 1.6f,
+                approximateSizeMb = 2.7f,
                 clipCount = 46,
-                license = "CC-BY-SA / Бесплатно",
+                license = "CC-BY-SA / Свободная",
             ),
             CatalogVoicePack(
                 id = "retro_humor",
-                name = "Веселый штурман (Юмор)",
+                name = "Ретро-юмор",
                 author = "Auto Club CIS",
-                description = "Непринужденные фразы с дорожным юмором для комфортных дальних поездок.",
+                description = "Ироничные ретро-предупреждения для нескучных дальних поездок.",
                 language = "ru",
                 downloadUrl =
                     "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/retro_humor.zip",
-                approximateSizeMb = 2.1f,
+                approximateSizeMb = 1.1f,
                 clipCount = 54,
                 license = "Free Non-Commercial",
             ),
             CatalogVoicePack(
                 id = "alex_english",
-                name = "English Navigator (Alex)",
+                name = "Alex (English Navigator)",
                 author = "Global SpeedCam",
                 description = "Concise and clear English alerts for speed limits, red lights and highway cameras.",
                 language = "en",
                 downloadUrl =
                     "https://raw.githubusercontent.com/Mishakorobov/speedcam/main/assets/voice/alex_english.zip",
-                approximateSizeMb = 1.3f,
+                approximateSizeMb = 1.6f,
                 clipCount = 42,
                 license = "MIT / Open Data",
             ),
@@ -126,8 +126,8 @@ object OnlineVoiceCatalog {
                         language = obj.optString("language", "ru"),
                         downloadUrl = obj.getString("downloadUrl"),
                         approximateSizeMb = obj.optDouble("sizeMb", 1.5).toFloat(),
-                        clipCount = obj.optInt("clipCount", 40),
-                        license = obj.optString("license", "Бесплатно"),
+                        clipCount = obj.optInt("clipCount", 32),
+                        license = obj.optString("license", "Свободная"),
                     ),
                 )
             }

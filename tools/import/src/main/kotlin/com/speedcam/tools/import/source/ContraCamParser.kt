@@ -51,6 +51,13 @@ object ContraCamParser {
         data: ByteArray,
         checkDate: String? = null,
     ): List<Camera> {
+        if (data.isEmpty()) return emptyList()
+
+        val headerPrefix = if (data.size >= 32) String(data, 0, minOf(data.size, 64), Charsets.ISO_8859_1) else ""
+        if (headerPrefix.contains("VESTIGO") || headerPrefix.contains("XVESTIGO")) {
+            return emptyList()
+        }
+
         val result = ArrayList<Camera>(data.size / 300)
         var p = 0
         val dataLen = data.size
