@@ -67,8 +67,32 @@ class VoiceAlertCoordinator(
 
     /**
      * Speaks a preview phrase for testing audio settings.
+     * Uses local audio pack if [engine] is AUDIO_PACK or if an active/installed pack is available,
+     * otherwise falls back to speech synthesis (TTS).
      */
     fun speakTest(customText: String? = null) {
+        stop()
+        if (engine == VoiceEngine.AUDIO_PACK || !activePackId.isNullOrBlank()) {
+            val targetPackId = activePackId ?: packManager.listInstalledPacks().firstOrNull()?.id
+            if (!targetPackId.isNullOrBlank()) {
+                val pack = packManager.getPack(targetPackId)
+                if (pack != null) {
+                    val testKeys =
+                        if (phraseStyle == VoicePhraseStyle.FULL) {
+                            listOf("attention", "dist_300", "cam_bus_lane", "oncoming", "limit_60")
+                        } else {
+                            listOf("cam_bus_lane", "limit_60", "oncoming", "dist_300")
+                        }
+                    val clips = packManager.findClipsForKeys(pack.dir, testKeys)
+                    if (!clips.isNullOrEmpty()) {
+                        packPlayer.playSequence(clips)
+                        return
+                    }
+                    Log.d(TAG, "Audio pack '${pack.name}' missing test clips ($testKeys); falling back to TTS")
+                }
+            }
+        }
+
         val testText =
             customText
                 ?: if (phraseStyle == VoicePhraseStyle.FULL) {

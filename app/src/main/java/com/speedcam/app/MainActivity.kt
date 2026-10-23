@@ -610,6 +610,8 @@ class MainActivity : ComponentActivity() {
             onSelectVoicePack = { packId ->
                 activeVoicePackId = packId
                 profiles.activeVoicePackId = packId
+                profiles.voiceEngine = VoiceEngine.AUDIO_PACK
+                voiceEngine = VoiceEngine.AUDIO_PACK
                 refreshVoicePacks()
             },
             onImportVoicePack = { voicePackPickerLauncher.launch(arrayOf("*/*")) },

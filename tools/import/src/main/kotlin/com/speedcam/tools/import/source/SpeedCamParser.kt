@@ -104,15 +104,21 @@ object SpeedCamParser {
             val line = lines[index].trim()
             index++
 
+            if (line.isEmpty() || line.startsWith("#") || INDEX_LINE.matches(line)) {
+                continue
+            }
+
+            // Check if line is CSV format (SpeedCamOnLine / iGO / Primo / Navitel)
+            val csvCam = parseCsvLine(line)
+            if (csvCam != null) {
+                out += csvCam
+                continue
+            }
+
             // A line yields a position only if it is a coordinate line; everything else in the
             // file — blank separators, X-index lines, comments — is skipped without branching
             // out of the loop.
-            val position =
-                if (line.isEmpty() || INDEX_LINE.matches(line)) {
-                    null
-                } else {
-                    COORDINATE.matchEntire(line)?.let(::toLatLon)
-                }
+            val position = COORDINATE.matchEntire(line)?.let(::toLatLon)
 
             if (position != null) {
                 val block = findTypeBlock(lines, index)
@@ -123,6 +129,91 @@ object SpeedCamParser {
         }
         return out
     }
+
+    /**
+     * Parses standard CSV line formats:
+     * - `IDX,X,Y,TYPE,SPEED,DIRTYPE,DIRECTION` (7+ fields, SpeedCamOnLine / iGO Primo)
+     * - `X,Y,TYPE,SPEED,DIRTYPE,DIRECTION` (6 fields, standard iGO)
+     */
+    internal fun parseCsvLine(line: String): Camera? {
+        if (!line.contains(',')) return null
+        val parts = line.split(',')
+        if (parts.size < 5) return null
+
+        val first = parts[0].trim()
+        if (first.equals("IDX", ignoreCase = true) || first.equals("X", ignoreCase = true)) {
+            return null
+        }
+
+        var extId = ""
+        var lonVal: Double? = null
+        var latVal: Double? = null
+        var typeCode: Int? = null
+        var speedVal: Int? = null
+        var dirTypeVal: Int? = null
+        var dirVal: Double? = null
+
+        if (parts.size >= 7) {
+            val p1 = parts[1].trim().toDoubleOrNull()
+            val p2 = parts[2].trim().toDoubleOrNull()
+            if (p1 != null && p2 != null && p1 in -180.0..180.0 && p2 in -90.0..90.0) {
+                extId = first
+                lonVal = p1
+                latVal = p2
+                typeCode = parts[3].trim().toIntOrNull()
+                speedVal = parts[4].trim().toIntOrNull()
+                dirTypeVal = parts[5].trim().toIntOrNull()
+                dirVal = parts[6].trim().toDoubleOrNull()
+            }
+        }
+
+        if (latVal == null || lonVal == null) {
+            val p0 = parts[0].trim().toDoubleOrNull()
+            val p1 = parts[1].trim().toDoubleOrNull()
+            if (p0 != null && p1 != null && p0 in -180.0..180.0 && p1 in -90.0..90.0) {
+                extId = "$p1,$p0"
+                lonVal = p0
+                latVal = p1
+                typeCode = parts.getOrNull(2)?.trim()?.toIntOrNull()
+                speedVal = parts.getOrNull(3)?.trim()?.toIntOrNull()
+                dirTypeVal = parts.getOrNull(4)?.trim()?.toIntOrNull()
+                dirVal = parts.getOrNull(5)?.trim()?.toDoubleOrNull()
+            }
+        }
+
+        if (latVal == null || lonVal == null) return null
+
+        val kind = mapIgoTypeToKind(typeCode)
+        val limit = speedVal?.takeIf { it in MIN_PLAUSIBLE_LIMIT..MAX_PLAUSIBLE_LIMIT }
+        val facing = if (dirTypeVal != 0) dirVal?.takeIf { it in 0.0..360.0 } else null
+
+        return Camera(
+            id = 0L,
+            position = LatLon(latVal, lonVal),
+            source = CameraSource.SPEEDCAM,
+            externalId = if (extId.isNotBlank()) "sc:$extId" else "sc:$latVal,$lonVal",
+            limitKmh = limit,
+            kind = kind,
+            facingDeg = facing,
+            dirCount = if (dirTypeVal == 2) 2 else 1,
+            operator = null,
+            sourceDetail = line,
+            checkDate = null,
+        )
+    }
+
+    private fun mapIgoTypeToKind(type: Int?): CameraKind =
+        when (type) {
+            1, 192 -> CameraKind.FIXED
+            2, 68 -> CameraKind.RED_LIGHT
+            3 -> CameraKind.COMPLEX
+            4, 193 -> CameraKind.AVERAGE_ENTRY
+            5, 209 -> CameraKind.MOBILE
+            199 -> CameraKind.BUS_LANE
+            215 -> CameraKind.DUMMY
+            227 -> CameraKind.COMPLEX
+            else -> CameraKind.FIXED
+        }
 
     /** The type marker attached to a coordinate line, and where parsing should resume. */
     private class TypeBlock(

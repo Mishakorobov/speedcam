@@ -50,8 +50,9 @@ interface CameraDao {
 
     /**
      * Bounding-box lookup filtered by active database source mode:
-     * - when [useContraCam] is 1, queries only ContraCam cameras (`source = 3`).
-     * - when [useContraCam] is 0, queries only standard cameras (`source != 3`).
+     * - when [useContraCam] is 1, queries ContraCam cameras (`source = 3`), falling back to SpeedCam (`source = 1`)
+     *   if no custom ContraCam rows exist.
+     * - when [useContraCam] is 0, queries standard cameras (`source != 3`).
      */
     @Query(
         """
@@ -63,7 +64,7 @@ interface CameraDao {
             (:minLon > :maxLon AND (lon >= :minLon OR lon <= :maxLon))
           )
           AND (
-            (:useContraCam = 1 AND source = 3)
+            (:useContraCam = 1 AND (source = 3 OR (source = 1 AND NOT EXISTS (SELECT 1 FROM camera WHERE source = 3 LIMIT 1))))
             OR
             (:useContraCam = 0 AND source != 3)
           )
@@ -98,7 +99,7 @@ interface CameraDao {
     @Query(
         """
         SELECT COUNT(*) FROM camera
-        WHERE (:useContraCam = 1 AND source = 3)
+        WHERE (:useContraCam = 1 AND (source = 3 OR (source = 1 AND NOT EXISTS (SELECT 1 FROM camera WHERE source = 3 LIMIT 1))))
            OR (:useContraCam = 0 AND source != 3)
         """,
     )
@@ -107,7 +108,7 @@ interface CameraDao {
     @Query("SELECT COUNT(*) FROM camera WHERE source = :source")
     suspend fun countBySource(source: Int): Int
 
-    @Query("SELECT EXISTS(SELECT 1 FROM camera WHERE source = 3 LIMIT 1)")
+    @Query("SELECT EXISTS(SELECT 1 FROM camera WHERE source = 3 OR source = 1 LIMIT 1)")
     fun hasContraCamCameras(): Boolean
 
     @Query("SELECT * FROM camera ORDER BY lat DESC, lon DESC LIMIT :limit")
@@ -129,7 +130,7 @@ interface CameraDao {
     @Query(
         """
         SELECT * FROM camera
-        WHERE (:useContraCam = 1 AND source = 3)
+        WHERE (:useContraCam = 1 AND (source = 3 OR (source = 1 AND NOT EXISTS (SELECT 1 FROM camera WHERE source = 3 LIMIT 1))))
            OR (:useContraCam = 0 AND source != 3)
         ORDER BY id
         """,
@@ -139,7 +140,7 @@ interface CameraDao {
     @Query(
         """
         SELECT * FROM camera
-        WHERE ((:useContraCam = 1 AND source = 3)
+        WHERE ((:useContraCam = 1 AND (source = 3 OR (source = 1 AND NOT EXISTS (SELECT 1 FROM camera WHERE source = 3 LIMIT 1))))
            OR (:useContraCam = 0 AND source != 3))
           AND id > :afterId
         ORDER BY id ASC

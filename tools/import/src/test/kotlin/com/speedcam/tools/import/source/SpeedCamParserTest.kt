@@ -161,4 +161,42 @@ class SpeedCamParserTest {
         assertNotNull(first.externalId)
         assertTrue(first.externalId!!.startsWith("sc:"))
     }
+
+    @Test
+    fun `parses standard CSV iGO Primo speedcam format with IDX`() {
+        val cameras =
+            parse(
+                "IDX,X,Y,TYPE,SPEED,DIRTYPE,DIRECTION",
+                "34688,85.9056840,51.9722265,192,60,1,142",
+                "10173,85.9319176,51.9542595,68,60,1,76",
+                "10182,85.8936807,51.9765467,192,40,1,154",
+            )
+        assertEquals(3, cameras.size)
+        assertEquals(51.9722265, cameras[0].position.lat, 1e-6)
+        assertEquals(85.9056840, cameras[0].position.lon, 1e-6)
+        assertEquals(60, cameras[0].limitKmh)
+        assertEquals(com.speedcam.core.detect.CameraKind.FIXED, cameras[0].kind)
+        assertEquals(142.0, cameras[0].facingDeg)
+
+        assertEquals(51.9542595, cameras[1].position.lat, 1e-6)
+        assertEquals(com.speedcam.core.detect.CameraKind.RED_LIGHT, cameras[1].kind)
+        assertEquals(76.0, cameras[1].facingDeg)
+
+        assertEquals(40, cameras[2].limitKmh)
+    }
+
+    @Test
+    fun `parses standard CSV iGO format without IDX`() {
+        val cameras =
+            parse(
+                "X,Y,TYPE,SPEED,DIRTYPE,DIRECTION",
+                "85.9056840,51.9722265,1,60,1,142",
+            )
+        assertEquals(1, cameras.size)
+        val c = cameras.single()
+        assertEquals(51.9722265, c.position.lat, 1e-6)
+        assertEquals(85.9056840, c.position.lon, 1e-6)
+        assertEquals(60, c.limitKmh)
+        assertEquals(com.speedcam.core.detect.CameraKind.FIXED, c.kind)
+    }
 }
