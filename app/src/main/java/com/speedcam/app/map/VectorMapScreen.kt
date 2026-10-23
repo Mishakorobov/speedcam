@@ -6,6 +6,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +59,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +69,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +85,8 @@ import com.speedcam.core.geo.Geo
 import com.speedcam.core.geo.LatLon
 import com.speedcam.service.DetectionUiState
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * Lightweight interactive vector map screen for speed camera detection.
@@ -543,27 +548,19 @@ private fun MapControlsColumn(
 
 @Composable
 private fun MapSecondaryControls(state: VectorMapState) {
-    FloatingActionButton(
-        onClick = { state.zoomIn() },
-        modifier = Modifier.size(42.dp),
-        shape = CircleShape,
-        containerColor = Color(0xDD0F172A),
-        contentColor = Color.White,
-        elevation = FloatingActionButtonDefaults.elevation(4.dp),
-    ) {
-        Icon(imageVector = Icons.Default.Add, contentDescription = "Приблизить")
-    }
+    RepeatingZoomButton(
+        icon = Icons.Default.Add,
+        contentDescription = "Приблизить",
+        onStep = { state.zoomIn() },
+        onContinuous = { delta -> state.zoomBy(delta) },
+    )
 
-    FloatingActionButton(
-        onClick = { state.zoomOut() },
-        modifier = Modifier.size(42.dp),
-        shape = CircleShape,
-        containerColor = Color(0xDD0F172A),
-        contentColor = Color.White,
-        elevation = FloatingActionButtonDefaults.elevation(4.dp),
-    ) {
-        Icon(imageVector = Icons.Default.Remove, contentDescription = "Отдалить")
-    }
+    RepeatingZoomButton(
+        icon = Icons.Default.Remove,
+        contentDescription = "Отдалить",
+        onStep = { state.zoomOut() },
+        onContinuous = { delta -> state.zoomBy(-delta) },
+    )
 
     FloatingActionButton(
         onClick = {
@@ -598,6 +595,50 @@ private fun MapSecondaryControls(state: VectorMapState) {
         Icon(
             imageVector = if (state.showDistanceRings) Icons.Default.Visibility else Icons.Default.VisibilityOff,
             contentDescription = "Кольца дальности",
+        )
+    }
+}
+
+@Composable
+private fun RepeatingZoomButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onStep: () -> Unit,
+    onContinuous: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val coroutineScope = rememberCoroutineScope()
+    Box(
+        modifier =
+            modifier
+                .size(42.dp)
+                .shadow(4.dp, CircleShape)
+                .clip(CircleShape)
+                .background(Color(0xDD0F172A))
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            onStep()
+                            val job =
+                                coroutineScope.launch {
+                                    delay(280) // Initial hold delay before continuous repeat
+                                    while (isActive) {
+                                        onContinuous(0.06f)
+                                        delay(25) // Smooth 40 FPS continuous zooming
+                                    }
+                                }
+                            tryAwaitRelease()
+                            job.cancel()
+                        },
+                    )
+                },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.White,
+            modifier = Modifier.size(22.dp),
         )
     }
 }

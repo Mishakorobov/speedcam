@@ -49,7 +49,21 @@ class OfflineTileManager(
     val revision = mutableLongStateOf(0L)
 
     init {
+        migrateTileCache()
         restoreActiveMbTiles()
+    }
+
+    private fun migrateTileCache() {
+        if (profiles.tileCacheVersion < TILE_CACHE_SCHEMA_VERSION) {
+            Log.i(
+                TAG,
+                "Migrating tile cache from v${profiles.tileCacheVersion} " +
+                    "to v$TILE_CACHE_SCHEMA_VERSION (clearing legacy Carto tiles)",
+            )
+            osmTileCache.clearCache()
+            memoryCache.evictAll()
+            profiles.tileCacheVersion = TILE_CACHE_SCHEMA_VERSION
+        }
     }
 
     private fun restoreActiveMbTiles() {
@@ -193,12 +207,32 @@ class OfflineTileManager(
         x: Int,
         y: Int,
     ): ByteArray? {
-        val urls =
-            listOf(
-                "https://a.basemaps.cartocdn.com/dark_all/$zoom/$x/$y.png",
-                "https://b.basemaps.cartocdn.com/dark_all/$zoom/$x/$y.png",
-                "https://tile.openstreetmap.org/$zoom/$x/$y.png",
-            )
+        val customTemplate = profiles.customTileServerUrl.trim()
+        val apiKey = profiles.tileApiKey.trim()
+
+        val urls = mutableListOf<String>()
+
+        // 1. User-defined custom tile server template (with optional API key placeholder)
+        if (customTemplate.isNotEmpty()) {
+            val formatted =
+                customTemplate
+                    .replace("{z}", zoom.toString(), ignoreCase = true)
+                    .replace("{x}", x.toString(), ignoreCase = true)
+                    .replace("{y}", y.toString(), ignoreCase = true)
+                    .replace("{apiKey}", apiKey, ignoreCase = true)
+                    .replace("{key}", apiKey, ignoreCase = true)
+            urls.add(formatted)
+        }
+
+        // 2. High-speed, 100% free, public OSM servers (Zero API key required)
+        urls.add("https://tile.openstreetmap.org/$zoom/$x/$y.png")
+        urls.add("https://a.tile.openstreetmap.fr/osmfr/$zoom/$x/$y.png")
+        urls.add("https://tile.openstreetmap.de/$zoom/$x/$y.png")
+
+        // 3. Fallback: Key-authenticated third-party tile providers (ONLY if user supplied an API key)
+        if (apiKey.isNotEmpty()) {
+            urls.add("https://a.basemaps.cartocdn.com/dark_all/$zoom/$x/$y.png?api_key=$apiKey")
+        }
 
         for (endpoint in urls) {
             val result =
@@ -207,7 +241,11 @@ class OfflineTileManager(
                         (URL(endpoint).openConnection() as HttpURLConnection).apply {
                             connectTimeout = 3000
                             readTimeout = 3500
-                            setRequestProperty("User-Agent", "SpeedCam-OfflineMap/1.0")
+                            setRequestProperty(
+                                "User-Agent",
+                                "SpeedCamApp/1.0 (Android; +https://github.com/Mishakorobov/speedcam)",
+                            )
+                            setRequestProperty("Accept", "image/png,image/webp,image/*")
                         }
                     if (conn.responseCode == HttpURLConnection.HTTP_OK) {
                         conn.inputStream.use { it.readBytes() }
@@ -309,5 +347,6 @@ class OfflineTileManager(
 
     companion object {
         private const val TAG = "OfflineTileManager"
+        private const val TILE_CACHE_SCHEMA_VERSION = 2
     }
 }

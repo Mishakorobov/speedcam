@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -283,6 +284,7 @@ private fun RadarQuickActionsRow(
             onClick = actions.onToggleMute,
             modifier = Modifier.weight(1f).height(44.dp),
             shape = RoundedCornerShape(10.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
         ) {
             Icon(
                 imageVector =
@@ -292,13 +294,15 @@ private fun RadarQuickActionsRow(
                         Icons.AutoMirrored.Filled.VolumeUp
                     },
                 contentDescription = "Звук",
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(16.dp),
                 tint = if (state.muted) SpeedWarning else MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = if (state.muted) "Без звука" else "Звук",
+                text = if (state.muted) "Выкл" else "Звук",
                 style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                softWrap = false,
             )
         }
 
@@ -306,28 +310,40 @@ private fun RadarQuickActionsRow(
             onClick = actions.onReportHazard,
             modifier = Modifier.weight(1f).height(44.dp),
             shape = RoundedCornerShape(10.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
         ) {
             Icon(
                 imageVector = Icons.Default.AddAlert,
                 contentDescription = "Отметка",
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(16.dp),
             )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Отметка", style = MaterialTheme.typography.labelMedium)
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "Отметка",
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
 
         FilledTonalButton(
             onClick = actions.onToggleHud,
             modifier = Modifier.weight(1f).height(44.dp),
             shape = RoundedCornerShape(10.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
         ) {
             Icon(
                 imageVector = Icons.Default.Layers,
                 contentDescription = "HUD",
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(16.dp),
             )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("HUD", style = MaterialTheme.typography.labelMedium)
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "HUD",
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                softWrap = false,
+            )
         }
     }
 }

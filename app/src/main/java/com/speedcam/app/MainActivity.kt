@@ -163,6 +163,8 @@ class MainActivity : ComponentActivity() {
     private var wearCompanionEnabled by mutableStateOf(true)
     private var wearHapticProfile by mutableStateOf("MOTORCYCLE_HIGH")
     private var offlineTilesEnabled by mutableStateOf(true)
+    private var customTileServerUrl by mutableStateOf("")
+    private var tileApiKey by mutableStateOf("")
     private var activeMbTilesName by mutableStateOf<String?>(null)
     private var tileCacheStats by mutableStateOf("")
     private var voiceEngine by mutableStateOf(VoiceEngine.TTS)
@@ -401,6 +403,8 @@ class MainActivity : ComponentActivity() {
                     autoUpdateEnabled = autoUpdateEnabled,
                     updateUrl = updateUrl,
                     offlineTilesEnabled = offlineTilesEnabled,
+                    customTileServerUrl = customTileServerUrl,
+                    tileApiKey = tileApiKey,
                     activeMbTilesName = activeMbTilesName,
                     tileCacheStats = tileCacheStats,
                     voiceEngine = voiceEngine,
@@ -567,6 +571,14 @@ class MainActivity : ComponentActivity() {
                 offlineTilesEnabled = it
                 lifecycleScope.launch(Dispatchers.IO) { profiles.offlineTilesEnabled = it }
             },
+            onCustomTileServerUrlChange = {
+                customTileServerUrl = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.customTileServerUrl = it }
+            },
+            onTileApiKeyChange = {
+                tileApiKey = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.tileApiKey = it }
+            },
             onImportMbTilesFile = { mbTilesPickerLauncher.launch(arrayOf("*/*")) },
             onClearMapCache = ::clearMapCache,
             onDisconnectMbTiles = ::disconnectMbTiles,
@@ -601,6 +613,8 @@ class MainActivity : ComponentActivity() {
         activeMbTilesName = mgr.activeMbTiles?.name
         tileCacheStats = mgr.getTileCacheStats()
         offlineTilesEnabled = profiles.offlineTilesEnabled
+        customTileServerUrl = profiles.customTileServerUrl
+        tileApiKey = profiles.tileApiKey
     }
 
     private fun importMbTilesFile(uri: Uri) {
@@ -970,6 +984,8 @@ private data class ShellState(
     val autoUpdateEnabled: Boolean = true,
     val updateUrl: String = "",
     val offlineTilesEnabled: Boolean = true,
+    val customTileServerUrl: String = "",
+    val tileApiKey: String = "",
     val activeMbTilesName: String? = null,
     val tileCacheStats: String = "",
     val voiceEngine: VoiceEngine = VoiceEngine.TTS,
@@ -1028,6 +1044,8 @@ private data class ShellActions(
     val onImportVoicePack: () -> Unit,
     val onTestVoice: () -> Unit,
     val onOfflineTilesEnabledChange: (Boolean) -> Unit,
+    val onCustomTileServerUrlChange: (String) -> Unit,
+    val onTileApiKeyChange: (String) -> Unit,
     val onImportMbTilesFile: () -> Unit,
     val onClearMapCache: () -> Unit,
     val onDisconnectMbTiles: () -> Unit,
@@ -1295,6 +1313,8 @@ private fun buildSettingsState(state: ShellState): SettingsState {
         connectedWatchName = state.connectedWatchName,
         updateUrl = state.updateUrl,
         offlineTilesEnabled = state.offlineTilesEnabled,
+        customTileServerUrl = state.customTileServerUrl,
+        tileApiKey = state.tileApiKey,
         activeMbTilesName = state.activeMbTilesName,
         tileCacheStats = state.tileCacheStats,
         voiceEngine = state.voiceEngine,
@@ -1345,6 +1365,8 @@ private fun buildSettingsActions(actions: ShellActions): SettingsActions =
         onWearHapticProfileChange = actions.onWearHapticProfileChange,
         onTestWearVibration = actions.onTestWearVibration,
         onOfflineTilesEnabledChange = actions.onOfflineTilesEnabledChange,
+        onCustomTileServerUrlChange = actions.onCustomTileServerUrlChange,
+        onTileApiKeyChange = actions.onTileApiKeyChange,
         onImportMbTilesFile = actions.onImportMbTilesFile,
         onClearMapCache = actions.onClearMapCache,
         onDisconnectMbTiles = actions.onDisconnectMbTiles,

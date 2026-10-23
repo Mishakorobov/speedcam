@@ -201,6 +201,21 @@ class ProfileStore(
         get() = prefs.getBoolean(KEY_OFFLINE_TILES_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_OFFLINE_TILES_ENABLED, value).apply()
 
+    /** Custom tile server URL template (e.g. "https://tile.openstreetmap.org/{z}/{x}/{y}.png"). Empty means default open mirrors. */
+    var customTileServerUrl: String
+        get() = prefs.getString(KEY_CUSTOM_TILE_SERVER_URL, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CUSTOM_TILE_SERVER_URL, value).apply()
+
+    /** Schema/migration version of the offline map tile cache to purge legacy invalid tiles. */
+    var tileCacheVersion: Int
+        get() = prefs.getInt(KEY_TILE_CACHE_VERSION, 0)
+        set(value) = prefs.edit().putInt(KEY_TILE_CACHE_VERSION, value).apply()
+
+    /** Optional API key for third-party tile providers (Stadia, MapTiler, Thunderforest, Carto). */
+    var tileApiKey: String
+        get() = prefs.getString(KEY_TILE_API_KEY, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_TILE_API_KEY, value).apply()
+
     /** Absolute file path to the active imported MBTiles database archive, if any. */
     var activeMbTilesPath: String?
         get() = prefs.getString(KEY_ACTIVE_MBTILES_PATH, null)
@@ -280,6 +295,9 @@ class ProfileStore(
         const val KEY_WEAR_COMPANION_ENABLED = "wearCompanionEnabled"
         const val KEY_WEAR_HAPTIC_PROFILE = "wearHapticProfile"
         const val KEY_OFFLINE_TILES_ENABLED = "offlineTilesEnabled"
+        const val KEY_CUSTOM_TILE_SERVER_URL = "customTileServerUrl"
+        const val KEY_TILE_CACHE_VERSION = "tileCacheVersion"
+        const val KEY_TILE_API_KEY = "tileApiKey"
         const val KEY_ACTIVE_MBTILES_PATH = "activeMbTilesPath"
         const val KEY_VOICE_ENGINE = "voiceEngine"
         const val KEY_VOICE_PHRASE_STYLE = "voicePhraseStyle"

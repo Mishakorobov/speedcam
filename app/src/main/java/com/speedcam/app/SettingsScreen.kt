@@ -56,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.speedcam.app.sync.DatabaseSyncEngine
 import com.speedcam.app.ui.components.SettingsSectionCard
 import com.speedcam.app.ui.components.SettingsSliderItem
@@ -117,6 +118,8 @@ data class SettingsState(
     val connectedWatchName: String = "",
     val updateUrl: String = "",
     val offlineTilesEnabled: Boolean = true,
+    val customTileServerUrl: String = "",
+    val tileApiKey: String = "",
     val activeMbTilesName: String? = null,
     val tileCacheStats: String = "",
     val voiceEngine: VoiceEngine = VoiceEngine.TTS,
@@ -166,6 +169,8 @@ data class SettingsActions(
     val onWearHapticProfileChange: (String) -> Unit = {},
     val onTestWearVibration: () -> Unit = {},
     val onOfflineTilesEnabledChange: (Boolean) -> Unit = {},
+    val onCustomTileServerUrlChange: (String) -> Unit = {},
+    val onTileApiKeyChange: (String) -> Unit = {},
     val onImportMbTilesFile: () -> Unit = {},
     val onClearMapCache: () -> Unit = {},
     val onDisconnectMbTiles: () -> Unit = {},
@@ -1001,6 +1006,46 @@ private fun OfflineMapSectionCard(
             ) {
                 Text("Отключить MBTiles (${state.activeMbTilesName})")
             }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "API-ключ тайл-сервера (опционально):",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = state.tileApiKey,
+                onValueChange = actions.onTileApiKeyChange,
+                placeholder = { Text("Опционально (Stadia, MapTiler, Carto)", maxLines = 1) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                text =
+                    "Встроенные зеркала OpenStreetMap работают бесплатно и не требуют API-ключа. " +
+                        "Если вы используете сторонний платный тайл-сервер, укажите ключ здесь.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+            )
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "Пользовательский URL тайлов:",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = state.customTileServerUrl,
+                onValueChange = actions.onCustomTileServerUrlChange,
+                placeholder = { Text("По умолчанию: OpenStreetMap mirrors", maxLines = 1) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }

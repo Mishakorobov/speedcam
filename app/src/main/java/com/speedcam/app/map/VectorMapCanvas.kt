@@ -226,10 +226,12 @@ private fun rememberPulseProgress(): androidx.compose.runtime.State<Float> {
 }
 
 private fun Modifier.mapTransformInput(state: VectorMapState): Modifier =
-    pointerInput(state.zoom, state.bearingDeg, state.centerLat, state.centerLon) {
+    pointerInput(state) {
         detectTransformGestures { _, pan, zoomFactor, rotationFactor ->
             if (zoomFactor != 1.0f) {
-                state.zoomBy((zoomFactor - 1.0f) * 1.5f)
+                // Natural logarithmic Web Mercator pinch zoom (zoom is base-2 exponent)
+                val zoomDelta = (kotlin.math.ln(zoomFactor.toDouble()) / kotlin.math.ln(2.0)).toFloat()
+                state.zoomBy(zoomDelta)
             }
             if (pan != Offset.Zero) {
                 state.pan(pan.x, pan.y, size.width.toFloat(), size.height.toFloat())
@@ -246,7 +248,7 @@ private fun Modifier.mapTapInput(
     densityScale: Float,
     onCameraClick: (Camera) -> Unit,
 ): Modifier =
-    pointerInput(cameras, state.zoom, state.bearingDeg, state.centerLat, state.centerLon) {
+    pointerInput(state, cameras) {
         detectTapGestures(
             onDoubleTap = { state.zoomIn() },
             onTap = { tapOffset ->
