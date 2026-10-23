@@ -3,7 +3,6 @@ package com.speedcam.core.media
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
-import android.net.Uri
 import android.util.Log
 import java.io.File
 
@@ -45,34 +44,35 @@ class VoicePackPlayer(
         currentIndex++
 
         try {
-            val player =
-                MediaPlayer().apply {
-                    setAudioAttributes(
-                        AudioAttributes
-                            .Builder()
-                            .setUsage(currentMode.usageRaw)
-                            .setContentType(currentMode.contentTypeRaw)
-                            .build(),
-                    )
-                    setDataSource(context, Uri.fromFile(file))
-                    setOnCompletionListener {
-                        it.release()
-                        if (mediaPlayer === it) {
-                            mediaPlayer = null
-                        }
-                        playNextClip()
-                    }
-                    setOnErrorListener { mp, what, extra ->
-                        Log.w(TAG, "MediaPlayer error ($what, $extra) playing ${file.name}")
-                        mp.release()
-                        if (mediaPlayer === mp) {
-                            mediaPlayer = null
-                        }
-                        false
-                    }
-                    prepare()
-                    start()
+            val player = MediaPlayer()
+            player.setAudioAttributes(
+                AudioAttributes
+                    .Builder()
+                    .setUsage(currentMode.usageRaw)
+                    .setContentType(currentMode.contentTypeRaw)
+                    .build(),
+            )
+            java.io.FileInputStream(file).use { fis ->
+                player.setDataSource(fis.fd)
+            }
+            player.setOnCompletionListener {
+                it.release()
+                if (mediaPlayer === it) {
+                    mediaPlayer = null
                 }
+                playNextClip()
+            }
+            player.setOnErrorListener { mp, what, extra ->
+                Log.w(TAG, "MediaPlayer error ($what, $extra) playing ${file.name}")
+                mp.release()
+                if (mediaPlayer === mp) {
+                    mediaPlayer = null
+                }
+                playNextClip()
+                true
+            }
+            player.prepare()
+            player.start()
             mediaPlayer = player
         } catch (e: Throwable) {
             Log.e(TAG, "Failed to play clip ${file.name}", e)

@@ -231,7 +231,7 @@ class ProfileStore(
 
     /** Selected voice engine: Android TTS, pre-recorded audio pack, or disabled. */
     var voiceEngine: VoiceEngine
-        get() = VoiceEngine.fromOrdinal(prefs.getInt(KEY_VOICE_ENGINE, VoiceEngine.TTS.ordinal))
+        get() = VoiceEngine.fromOrdinal(prefs.getInt(KEY_VOICE_ENGINE, VoiceEngine.AUDIO_PACK.ordinal))
         set(value) = prefs.edit().putInt(KEY_VOICE_ENGINE, value.ordinal).apply()
 
     /** Spoken phrase style: FULL descriptive announcement vs SHORT concise announcement. */
@@ -246,7 +246,7 @@ class ProfileStore(
 
     /** Identifier of the active audio phrase pack, if any. */
     var activeVoicePackId: String?
-        get() = prefs.getString(KEY_ACTIVE_VOICE_PACK_ID, null)
+        get() = prefs.getString(KEY_ACTIVE_VOICE_PACK_ID, "elena_standard")
         set(value) = prefs.edit().putString(KEY_ACTIVE_VOICE_PACK_ID, value).apply()
 
     /**

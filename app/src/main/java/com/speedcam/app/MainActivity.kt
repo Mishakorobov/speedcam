@@ -625,6 +625,9 @@ class MainActivity : ComponentActivity() {
             onVoiceEngineChange = { engine ->
                 voiceEngine = engine
                 profiles.voiceEngine = engine
+                if (engine == VoiceEngine.AUDIO_PACK && activeVoicePackId.isNullOrBlank()) {
+                    refreshVoicePacks()
+                }
             },
             onVoicePhraseStyleChange = { style ->
                 voicePhraseStyle = style
@@ -723,6 +726,11 @@ class MainActivity : ComponentActivity() {
     private fun refreshVoicePacks() {
         val packs = voicePackManager.listInstalledPacks()
         installedVoicePacks = packs.map { it.id to "${it.name} (${it.clipCount})" }
+        if (activeVoicePackId.isNullOrBlank() && packs.isNotEmpty()) {
+            val defaultId = packs.firstOrNull { it.id == "elena_standard" }?.id ?: packs.first().id
+            activeVoicePackId = defaultId
+            profiles.activeVoicePackId = defaultId
+        }
         val active = packs.firstOrNull { it.id == activeVoicePackId }
         activeVoicePackName = active?.let { "${it.name} (${it.clipCount} фраз)" }
     }

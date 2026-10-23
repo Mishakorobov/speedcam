@@ -28,7 +28,44 @@ class VoicePackManager(
     val packsDir = File(context.filesDir, "voice_packs").apply { mkdirs() }
 
     fun listInstalledPacks(): List<VoicePackInfo> {
-        val dirs = packsDir.listFiles { f -> f.isDirectory } ?: return emptyList()
+        var dirs = packsDir.listFiles { f -> f.isDirectory } ?: emptyArray()
+        if (dirs.none { countAudioFiles(it) > 0 }) {
+            ensureBundledPacksInstalled()
+            dirs = packsDir.listFiles { f -> f.isDirectory } ?: emptyArray()
+        }
+        return dirs.mapNotNull { dir ->
+            val clips = countAudioFiles(dir)
+            if (clips > 0) {
+                VoicePackInfo(
+                    id = dir.name,
+                    name = dir.name.replace("_", " ").replaceFirstChar { it.uppercase() },
+                    dir = dir,
+                    clipCount = clips,
+                )
+            } else {
+                null
+            }
+        }
+    }
+
+    fun ensureBundledPacksInstalled(): List<VoicePackInfo> {
+        val existing = packsDir.listFiles { f -> f.isDirectory && countAudioFiles(f) > 0 }
+        if (existing.isNullOrEmpty()) {
+            runCatching {
+                val assetVoiceFiles = context.assets.list("voice") ?: emptyArray()
+                for (zipFile in assetVoiceFiles) {
+                    if (zipFile.endsWith(".zip", ignoreCase = true)) {
+                        val packId = zipFile.substringBeforeLast('.')
+                        context.assets.open("voice/$zipFile").use { input ->
+                            importPackFromZip(input, packId)
+                        }
+                    }
+                }
+            }.onFailure {
+                Log.w(TAG, "Failed to extract bundled voice packs: ${it.message}")
+            }
+        }
+        val dirs = packsDir.listFiles { f -> f.isDirectory } ?: emptyArray()
         return dirs.mapNotNull { dir ->
             val clips = countAudioFiles(dir)
             if (clips > 0) {
@@ -46,7 +83,15 @@ class VoicePackManager(
 
     fun getPack(packId: String?): VoicePackInfo? {
         if (packId.isNullOrBlank()) return null
-        val dir = File(packsDir, packId)
+        var dir = File(packsDir, packId)
+        if (!dir.exists() || !dir.isDirectory || countAudioFiles(dir) == 0) {
+            runCatching {
+                context.assets.open("voice/$packId.zip").use { input ->
+                    importPackFromZip(input, packId)
+                }
+            }
+            dir = File(packsDir, packId)
+        }
         if (!dir.exists() || !dir.isDirectory) return null
         val clips = countAudioFiles(dir)
         return VoicePackInfo(
@@ -82,6 +127,29 @@ class VoicePackManager(
             } else {
                 // Missing specific clip -> signal TTS fallback
                 return null
+            }
+        }
+        return matchedFiles
+    }
+
+    /**
+     * Resolves matching audio files for any of the [keys] within [packDir],
+     * skipping missing clips instead of returning null.
+     */
+    fun findAvailableClips(
+        packDir: File,
+        keys: List<String>,
+    ): List<File> {
+        val matchedFiles = ArrayList<File>()
+        val audioExtensions = listOf("mp3", "ogg", "wav", "m4a")
+
+        for (key in keys) {
+            for (ext in audioExtensions) {
+                val candidate = File(packDir, "$key.$ext")
+                if (candidate.exists() && candidate.length() > 0L) {
+                    matchedFiles.add(candidate)
+                    break
+                }
             }
         }
         return matchedFiles

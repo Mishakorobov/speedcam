@@ -36,8 +36,12 @@ class VoiceAlertCoordinator(
     ) {
         if (engine == VoiceEngine.DISABLED) return
 
-        if (engine == VoiceEngine.AUDIO_PACK && !activePackId.isNullOrBlank()) {
-            val pack = packManager.getPack(activePackId)
+        if (engine == VoiceEngine.AUDIO_PACK) {
+            val targetPackId =
+                activePackId?.takeIf { it.isNotBlank() }
+                    ?: packManager.listInstalledPacks().firstOrNull()?.id
+                    ?: "elena_standard"
+            val pack = packManager.getPack(targetPackId)
             if (pack != null) {
                 val keys = VoicePhraseBuilder.getAudioClipKeys(decision, hazard, phraseStyle)
                 val clips = packManager.findClipsForKeys(pack.dir, keys)
@@ -67,29 +71,47 @@ class VoiceAlertCoordinator(
 
     /**
      * Speaks a preview phrase for testing audio settings.
-     * Uses local audio pack if [engine] is AUDIO_PACK or if an active/installed pack is available,
+     * Uses local audio pack if available (or if [engine] is AUDIO_PACK),
      * otherwise falls back to speech synthesis (TTS).
      */
     fun speakTest(customText: String? = null) {
         stop()
-        if (engine == VoiceEngine.AUDIO_PACK || !activePackId.isNullOrBlank()) {
-            val targetPackId = activePackId ?: packManager.listInstalledPacks().firstOrNull()?.id
-            if (!targetPackId.isNullOrBlank()) {
-                val pack = packManager.getPack(targetPackId)
-                if (pack != null) {
-                    val testKeys =
-                        if (phraseStyle == VoicePhraseStyle.FULL) {
-                            listOf("attention", "dist_300", "cam_bus_lane", "oncoming", "limit_60")
-                        } else {
-                            listOf("cam_bus_lane", "limit_60", "oncoming", "dist_300")
-                        }
-                    val clips = packManager.findClipsForKeys(pack.dir, testKeys)
-                    if (!clips.isNullOrEmpty()) {
-                        packPlayer.playSequence(clips)
-                        return
+        if (engine != VoiceEngine.DISABLED) {
+            val targetPackId =
+                activePackId?.takeIf { it.isNotBlank() }
+                    ?: packManager.listInstalledPacks().firstOrNull()?.id
+                    ?: "elena_standard"
+
+            val pack =
+                packManager.getPack(targetPackId)
+                    ?: packManager.listInstalledPacks().firstOrNull()
+
+            if (pack != null) {
+                val testKeys =
+                    if (phraseStyle == VoicePhraseStyle.FULL) {
+                        listOf("attention", "dist_300", "cam_bus_lane", "oncoming", "limit_60")
+                    } else {
+                        listOf("cam_bus_lane", "limit_60", "oncoming", "dist_300")
                     }
-                    Log.d(TAG, "Audio pack '${pack.name}' missing test clips ($testKeys); falling back to TTS")
+                var clips = packManager.findClipsForKeys(pack.dir, testKeys)
+                if (clips.isNullOrEmpty()) {
+                    clips = packManager.findAvailableClips(pack.dir, testKeys)
                 }
+                if (clips.isNullOrEmpty()) {
+                    clips =
+                        pack.dir
+                            .listFiles { f ->
+                                f.isFile && f.extension.lowercase() in listOf("wav", "mp3", "ogg", "m4a")
+                            }?.sortedBy { it.name }
+                            ?.take(4) ?: emptyList()
+                }
+
+                if (!clips.isNullOrEmpty()) {
+                    Log.d(TAG, "Playing test audio clips from pack '${pack.name}': ${clips.map { it.name }}")
+                    packPlayer.playSequence(clips)
+                    return
+                }
+                Log.d(TAG, "Audio pack '${pack.name}' has no clips; falling back to TTS")
             }
         }
 
