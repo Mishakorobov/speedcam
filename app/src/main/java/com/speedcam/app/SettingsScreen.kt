@@ -79,6 +79,7 @@ data class SettingsState(
     val enabled: Boolean,
     val quickSetting: QuickSetting,
     val captureDistanceKm: Double,
+    val minAlertSpeedKmh: Int = 5,
     val transport: TransportProfile,
     val hudEnabled: Boolean,
     val hudAutoHide: Boolean = false,
@@ -135,6 +136,7 @@ data class SettingsActions(
     val onEnabledChange: (Boolean) -> Unit = {},
     val onQuickSettingChange: (QuickSetting) -> Unit = {},
     val onCaptureDistanceChange: (Double) -> Unit = {},
+    val onMinAlertSpeedChange: (Int) -> Unit = {},
     val onTransportChange: (TransportProfile) -> Unit = {},
     val onHudEnabledChange: (Boolean) -> Unit = {},
     val onHudAutoHideChange: (Boolean) -> Unit = {},
@@ -255,6 +257,36 @@ private fun DetectionSectionCard(
                 ),
             onValueChange = {},
             onValueChangeFinished = { actions.onCaptureDistanceChange(it.toDouble()) },
+        )
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+        val minSpeedLabel =
+            if (state.minAlertSpeedKmh <= 0) "Выкл (0 км/ч)" else "${state.minAlertSpeedKmh} км/ч"
+        SettingsSliderItem(
+            item =
+                SliderItemState(
+                    title = "Порог тишины в покое",
+                    valueLabel = minSpeedLabel,
+                    value = state.minAlertSpeedKmh.toFloat(),
+                    valueRange = 0f..30f,
+                    formatValueLabel = { v ->
+                        val intVal = (Math.round(v / 5f) * 5).toInt()
+                        if (intVal <= 0) "Выкл (0 км/ч)" else "$intVal км/ч"
+                    },
+                ),
+            onValueChange = {},
+            onValueChangeFinished = {
+                val stepped = (Math.round(it / 5f) * 5).toInt()
+                actions.onMinAlertSpeedChange(stepped)
+            },
+        )
+        Text(
+            text =
+                "Глушит голосовые фразы, бипер и вибрацию при остановке автомобиля (на светофорах и стоянке), " +
+                    "полностью исключая ложные звуковые срабатывания.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 import com.speedcam.core.data.CameraStore
 import com.speedcam.core.detect.AlertContext
 import com.speedcam.core.detect.AlertDecision
+import com.speedcam.core.detect.AlertPolicy
 import com.speedcam.core.detect.AlertProfile
 import com.speedcam.core.detect.Fix
 import com.speedcam.core.detect.SectionEvent
@@ -322,34 +323,50 @@ class DetectionService : Service() {
             )
         }
 
-// Only the nearest. Hazards arrive sorted nearest-first, and dispatching every one of
+        val minAudibleSpeed =
+            if (profile.warnSpeedLimitKmh > 0) {
+                profile.warnSpeedLimitKmh.toDouble()
+            } else {
+                AlertPolicy.DEFAULT_MIN_ALERT_SPEED_KMH
+            }
+        val isStationary = fix.speedKmh < minAudibleSpeed
+        if (isStationary) {
+            mediaEngine?.silence()
+        }
+
+        if (result.hazards.isEmpty()) {
+            mediaEngine?.resetCameraTracking()
+        }
+
+        // Only the nearest. Hazards arrive sorted nearest-first, and dispatching every one of
         // them would leave the notification describing whichever was furthest away — telling
         // the driver about a camera 8 km off while one 8.2 km off goes unmentioned, with the
         // numbers silently swapped for the worse.
         result.decisions.firstOrNull()?.let { nearest ->
             dispatch(nearest)
 
-            // The alert policy has already decided what to say; the cadence latch decides
-            // whether it is heard this tick, and the media engine performs it.
-            val nearestHazard = result.hazards.firstOrNull()
-            if (nearestHazard != null) {
-                // Isolated on purpose. Detection is the safety-critical loop and audio is not:
-                // a failing SoundPool or AudioTrack must not be able to stop the driver being
-                // warned. Without this the whole collection dies on the first media exception.
-                runCatching {
-                    media.setOutputMode(currentOutputMode())
-                    media.voiceCoordinator.engine = profiles.voiceEngine
-                    media.voiceCoordinator.phraseStyle = profiles.voicePhraseStyle
-                    media.voiceCoordinator.speechRate = profiles.ttsSpeechRate
-                    media.voiceCoordinator.activePackId = profiles.activeVoicePackId
-                    media.play(
-                        decision = nearest,
-                        hazard = nearestHazard,
-                        isPrimary = true,
-                        nowMillis = System.currentTimeMillis(),
-                    )
-                }.onFailure {
-                    Log.w(TAG, "Media layer failed; detection continues: ${it.message}")
+            // When stationary or silent, do not play audible or haptic alerts to prevent spam while stopped
+            if (!isStationary && !nearest.isSilent) {
+                val nearestHazard = result.hazards.firstOrNull()
+                if (nearestHazard != null) {
+                    // Isolated on purpose. Detection is the safety-critical loop and audio is not:
+                    // a failing SoundPool or AudioTrack must not be able to stop the driver being
+                    // warned. Without this the whole collection dies on the first media exception.
+                    runCatching {
+                        media.setOutputMode(currentOutputMode())
+                        media.voiceCoordinator.engine = profiles.voiceEngine
+                        media.voiceCoordinator.phraseStyle = profiles.voicePhraseStyle
+                        media.voiceCoordinator.speechRate = profiles.ttsSpeechRate
+                        media.voiceCoordinator.activePackId = profiles.activeVoicePackId
+                        media.play(
+                            decision = nearest,
+                            hazard = nearestHazard,
+                            isPrimary = true,
+                            nowMillis = System.currentTimeMillis(),
+                        )
+                    }.onFailure {
+                        Log.w(TAG, "Media layer failed; detection continues: ${it.message}")
+                    }
                 }
             }
         }

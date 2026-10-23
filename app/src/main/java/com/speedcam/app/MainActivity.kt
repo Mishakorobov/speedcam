@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -156,6 +157,7 @@ class MainActivity : ComponentActivity() {
     private var detectionRunning by mutableStateOf(true)
     private var quickSetting by mutableStateOf(QuickSetting.MAXIMUM_ALERTS)
     private var captureDistanceKm by mutableDoubleStateOf(0.0)
+    private var minAlertSpeedKmh by mutableIntStateOf(5)
     private var transport by mutableStateOf(TransportProfile.COMMON)
     private var hudEnabled by mutableStateOf(true)
     private var hudAutoHide by mutableStateOf(false)
@@ -252,6 +254,7 @@ class MainActivity : ComponentActivity() {
         detectionRunning = profiles.isEnabled
         quickSetting = profiles.quickSetting
         captureDistanceKm = profiles.captureDistanceKm
+        minAlertSpeedKmh = profiles.minAlertSpeedKmh
         transport = profiles.transport
         hudEnabled = profiles.hudEnabled
         hudAutoHide = profiles.hudAutoHide
@@ -421,6 +424,7 @@ class MainActivity : ComponentActivity() {
                     isDetectionEnabled = detectionRunning,
                     quickSetting = quickSetting,
                     captureDistanceKm = captureDistanceKm,
+                    minAlertSpeedKmh = minAlertSpeedKmh,
                     transport = transport,
                     hudEnabled = hudEnabled,
                     hudAutoHide = hudAutoHide,
@@ -571,6 +575,10 @@ class MainActivity : ComponentActivity() {
             onCaptureDistanceChange = {
                 captureDistanceKm = it
                 lifecycleScope.launch(Dispatchers.IO) { profiles.captureDistanceKm = it }
+            },
+            onMinAlertSpeedChange = {
+                minAlertSpeedKmh = it
+                lifecycleScope.launch(Dispatchers.IO) { profiles.minAlertSpeedKmh = it }
             },
             onTransportChange = {
                 transport = it
@@ -954,6 +962,7 @@ class MainActivity : ComponentActivity() {
         detectionRunning = profiles.isEnabled
         quickSetting = profiles.quickSetting
         captureDistanceKm = profiles.captureDistanceKm
+        minAlertSpeedKmh = profiles.minAlertSpeedKmh
         transport = profiles.transport
         hudEnabled = profiles.hudEnabled
         hudAutoHide = profiles.hudAutoHide
@@ -1158,6 +1167,7 @@ private data class ShellState(
     val isDetectionEnabled: Boolean = true,
     val quickSetting: QuickSetting = QuickSetting.MAXIMUM_ALERTS,
     val captureDistanceKm: Double = 0.0,
+    val minAlertSpeedKmh: Int = 5,
     val transport: TransportProfile = TransportProfile.COMMON,
     val hudEnabled: Boolean = true,
     val hudAutoHide: Boolean = false,
@@ -1214,6 +1224,7 @@ private data class ShellActions(
     val onTestWearVibration: () -> Unit,
     val onQuickSettingChange: (QuickSetting) -> Unit,
     val onCaptureDistanceChange: (Double) -> Unit,
+    val onMinAlertSpeedChange: (Int) -> Unit,
     val onTransportChange: (TransportProfile) -> Unit,
     val onHudEnabledChange: (Boolean) -> Unit,
     val onHudAutoHideChange: (Boolean) -> Unit,
@@ -1458,6 +1469,7 @@ private fun buildSettingsState(state: ShellState): SettingsState {
         enabled = state.isDetectionEnabled,
         quickSetting = state.quickSetting,
         captureDistanceKm = state.captureDistanceKm,
+        minAlertSpeedKmh = state.minAlertSpeedKmh,
         transport = state.transport,
         hudEnabled = state.hudEnabled,
         hudAutoHide = state.hudAutoHide,
@@ -1515,6 +1527,7 @@ private fun buildSettingsActions(actions: ShellActions): SettingsActions =
         onEnabledChange = actions.onEnableChange,
         onQuickSettingChange = actions.onQuickSettingChange,
         onCaptureDistanceChange = actions.onCaptureDistanceChange,
+        onMinAlertSpeedChange = actions.onMinAlertSpeedChange,
         onTransportChange = actions.onTransportChange,
         onHudEnabledChange = actions.onHudEnabledChange,
         onHudAutoHideChange = actions.onHudAutoHideChange,

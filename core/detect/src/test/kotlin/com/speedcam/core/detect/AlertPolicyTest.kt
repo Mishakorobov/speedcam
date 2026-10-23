@@ -302,4 +302,41 @@ class AlertPolicyTest {
         assertNull(decision.limitKmh)
         assertNull(decision.excessKmh)
     }
+
+    @Test
+    fun `stationary vehicle standing still suppresses audible and haptic alerts`() {
+        val stationary = Fixtures.hazard(id = 1, limitKmh = 60, speedKmh = 0.0)
+        val profile =
+            AlertProfile(
+                voice = true,
+                soundEnabled = true,
+                beepEnabled = true,
+                vibro = true,
+                localNotifications = false,
+            )
+        val decision = AlertPolicy.evaluate(stationary, profile)
+        assertNull(decision, "standing still must suppress audible and vibrating alerts")
+    }
+
+    @Test
+    fun `speed below threshold suppresses beeping even for unknown limit`() {
+        val stationaryUnknown = Fixtures.hazard(id = 1, limitKmh = null, speedKmh = 2.0)
+        assertFalse(
+            AlertPolicy.isBeepThresholdSatisfied(
+                stationaryUnknown,
+                AlertProfile(beepExcessThresholdKmh = 0),
+            ),
+        )
+    }
+
+    @Test
+    fun `moving vehicle past threshold receives audible alerts`() {
+        val moving = Fixtures.hazard(id = 1, limitKmh = 60, speedKmh = 70.0)
+        val profile = AlertProfile(voice = true, soundEnabled = true, beepEnabled = true, vibro = true)
+        val decision = AlertPolicy.evaluate(moving, profile)
+        assertNotNull(decision)
+        assertTrue(AlertChannel.VOICE in decision!!.channels)
+        assertTrue(AlertChannel.BEEP in decision.channels)
+        assertTrue(AlertChannel.VIBRATION in decision.channels)
+    }
 }

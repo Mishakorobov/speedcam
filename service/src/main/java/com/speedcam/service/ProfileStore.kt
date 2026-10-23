@@ -57,6 +57,14 @@ class ProfileStore(
         get() = prefs.getFloat(KEY_CAPTURE_DISTANCE_KM, 0f).toDouble()
         set(value) = prefs.edit().putFloat(KEY_CAPTURE_DISTANCE_KM, value.toFloat()).apply()
 
+    /**
+     * Minimum speed in km/h below which audible and haptic warnings are suppressed (stationary silence).
+     * Defaults to 5 km/h to prevent alarms while standing still.
+     */
+    var minAlertSpeedKmh: Int
+        get() = prefs.getInt(KEY_MIN_ALERT_SPEED_KMH, DEFAULT_MIN_ALERT_SPEED_KMH)
+        set(value) = prefs.edit().putInt(KEY_MIN_ALERT_SPEED_KMH, value).apply()
+
     /** Whether the floating HUD is wanted. Separate from the overlay permission, which is the system's. */
     var hudEnabled: Boolean
         get() = prefs.getBoolean(KEY_HUD_ENABLED, true)
@@ -254,6 +262,7 @@ class ProfileStore(
         val base =
             AlertProfile(
                 captureDistanceKm = captureDistanceKm,
+                warnSpeedLimitKmh = minAlertSpeedKmh,
                 // A connected hands-free device implies a car, which switches the Common
                 // profile to the Car one. An explicit non-Common choice is never overridden.
                 transport = TransportProfile.select(transport, headsetConnected),
@@ -267,6 +276,8 @@ class ProfileStore(
         const val KEY_QUICK_SETTING = "quickSetting"
         const val KEY_TRANSPORT = "transport"
         const val KEY_CAPTURE_DISTANCE_KM = "captureDistanceKm"
+        const val KEY_MIN_ALERT_SPEED_KMH = "minAlertSpeedKmh"
+        const val DEFAULT_MIN_ALERT_SPEED_KMH = 5
         const val KEY_SILENT_DURING_CALL = "silentDuringCall"
         const val KEY_CAMERA_COUNT = "cameraCount"
         const val KEY_OUTPUT_MODE = "outputMode"

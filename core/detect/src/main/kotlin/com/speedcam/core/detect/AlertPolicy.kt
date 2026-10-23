@@ -92,13 +92,24 @@ object AlertPolicy {
     ): AlertDecision? {
         if (!isWarnTimeSatisfied(profile.warnTime, context)) return null
 
+        val minSpeed =
+            if (profile.warnSpeedLimitKmh > 0) {
+                profile.warnSpeedLimitKmh.toDouble()
+            } else {
+                DEFAULT_MIN_ALERT_SPEED_KMH
+            }
+        val isMovingAboveThreshold = hazard.speedKmh >= minSpeed
+
         val channels =
             buildSet {
-                if (profile.voice) add(AlertChannel.VOICE)
-                if (profile.soundEnabled && profile.soundId in SOUND_BANK) add(AlertChannel.SOUND)
-                if (profile.vibro) add(AlertChannel.VIBRATION)
+                // Standing still or driving below threshold silences audible/haptic alerts completely.
+                if (isMovingAboveThreshold) {
+                    if (profile.voice) add(AlertChannel.VOICE)
+                    if (profile.soundEnabled && profile.soundId in SOUND_BANK) add(AlertChannel.SOUND)
+                    if (profile.vibro) add(AlertChannel.VIBRATION)
+                    if (profile.beepEnabled && isBeepThresholdSatisfied(hazard, profile)) add(AlertChannel.BEEP)
+                }
                 if (profile.localNotifications) add(AlertChannel.NOTIFICATION)
-                if (profile.beepEnabled && isBeepThresholdSatisfied(hazard, profile)) add(AlertChannel.BEEP)
             }
 
         if (channels.isEmpty()) return null
@@ -148,10 +159,14 @@ object AlertPolicy {
         hazard: Hazard,
         profile: AlertProfile,
     ): Boolean {
+        if (hazard.speedKmh < DEFAULT_MIN_ALERT_SPEED_KMH) return false
         if (profile.beepExcessThresholdKmh <= 0) return true
         val excess = hazard.excessKmh ?: return true
         return excess > profile.beepExcessThresholdKmh
     }
+
+    /** Minimum vehicle speed in km/h to trigger audible or haptic alerts (suppresses alerts while standing still). */
+    const val DEFAULT_MIN_ALERT_SPEED_KMH = 5.0
 
     /**
      * Number of alert sounds in the bank.

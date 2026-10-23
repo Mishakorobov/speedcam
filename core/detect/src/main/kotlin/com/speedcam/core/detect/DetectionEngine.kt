@@ -80,6 +80,7 @@ class DetectionEngine(
             bearingDeg = bearing,
             relativeBearingDeg = relative,
             excessKmh = if (limit != null && limit > 0) fix.speedKmh - limit else null,
+            speedKmh = fix.speedKmh,
         )
     }
 

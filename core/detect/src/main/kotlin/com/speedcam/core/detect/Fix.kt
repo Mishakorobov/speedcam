@@ -74,6 +74,8 @@ data class Hazard(
     val relativeBearingDeg: Double,
     /** `speedKmh - limitKmh`, or null when the camera has no recorded limit. */
     val excessKmh: Double?,
+    /** Current vehicle speed in km/h when hazard was evaluated. */
+    val speedKmh: Double = 0.0,
 ) {
     /** True when the camera is behind or beside the vehicle rather than ahead. */
     val isBehind: Boolean get() = kotlin.math.abs(relativeBearingDeg) > 90.0

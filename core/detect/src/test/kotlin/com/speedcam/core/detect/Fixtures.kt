@@ -70,6 +70,7 @@ object Fixtures {
         bearingDeg = 0.0,
         relativeBearingDeg = 0.0,
         excessKmh = limitKmh?.takeIf { it > 0 }?.let { speedKmh - it },
+        speedKmh = speedKmh,
     )
 
     private object Geo180 {

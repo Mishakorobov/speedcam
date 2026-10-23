@@ -6,6 +6,7 @@ import android.media.AudioManager
 import android.util.Log
 import com.speedcam.core.detect.AlertChannel
 import com.speedcam.core.detect.AlertDecision
+import com.speedcam.core.detect.AlertPolicy
 import com.speedcam.core.detect.AlertProfile
 import com.speedcam.core.detect.Hazard
 import com.speedcam.core.detect.SectionEvent
@@ -40,6 +41,11 @@ class MediaAlertEngine(
 
     private var focusRequest: AudioFocusRequest? = null
     private var cadence: AlertCadenceState = AlertCadence.initial()
+
+    private var lastVoicedCameraId: Long? = null
+    private var lastVoicedAtMs: Long = 0L
+    private var lastInitialCameraId: Long? = null
+    private var lastInitialAtMs: Long = 0L
 
     @Volatile
     private var callState = CallSuppressionState()
@@ -103,12 +109,29 @@ class MediaAlertEngine(
             return
         }
 
+        // Standing still, stationary or silent decision: instantly silence outputs and do not alert
+        if (decision.isSilent || hazard.speedKmh < AlertPolicy.DEFAULT_MIN_ALERT_SPEED_KMH) {
+            silence()
+            return
+        }
+
         prepareAudioRoute()
 
+        // Per-camera announcement tracking: voice announces once per camera per approach window
+        val isDifferentCameraForVoice = (lastVoicedCameraId != hazard.camera.id)
+        val isVoiceCooldownExpired = (nowMillis - lastVoicedAtMs > CAMERA_REVOICE_COOLDOWN_MS)
+        val canVoice = isDifferentCameraForVoice || isVoiceCooldownExpired
+        val wantsSpeech = AlertChannel.VOICE in decision.channels && canVoice
+
+        // Initial alert (chime & vibration) triggers once per camera
+        val isNewCamera = (lastInitialCameraId != hazard.camera.id)
+        val wantsSound = AlertChannel.SOUND in decision.channels && isNewCamera
+        val wantsVibro =
+            VibrationPolicy.shouldVibrate(AlertChannel.VIBRATION in decision.channels, isPrimary) &&
+                isNewCamera
+
+        // Beeping/gager tone occurs when exceeding speed limit in motion
         val wantsBeep = AlertChannel.BEEP in decision.channels && mode.allowsTones
-        val wantsSound = AlertChannel.SOUND in decision.channels
-        val wantsSpeech = AlertChannel.VOICE in decision.channels
-        val wantsVibro = VibrationPolicy.shouldVibrate(AlertChannel.VIBRATION in decision.channels, isPrimary)
 
         val outcome =
             AlertCadence.advance(
@@ -124,6 +147,11 @@ class MediaAlertEngine(
                     ),
             )
         cadence = outcome.next
+
+        if (isNewCamera) {
+            lastInitialCameraId = hazard.camera.id
+            lastInitialAtMs = nowMillis
+        }
 
         dispatchAlertOutputs(decision, hazard, outcome)
         scheduleRouteRelease(gager.durationMs(decision.distanceM).toLong())
@@ -155,6 +183,8 @@ class MediaAlertEngine(
         }
 
         if (outcome.speech) {
+            lastVoicedCameraId = hazard.camera.id
+            lastVoicedAtMs = System.currentTimeMillis()
             val plan = SpeechPlanner.plan(decision, hazard)
             Log.i(TAG, "Speech planned: ${plan.phrases.joinToString { it.name }}")
             voiceCoordinator.speakHazard(decision, hazard)
@@ -216,13 +246,24 @@ class MediaAlertEngine(
         gager.play(decision.distanceM, mode)
     }
 
-    fun release() {
-        voiceCoordinator.release()
-        scoController.forceStop()
+    fun silence() {
+        voiceCoordinator.stop()
         gager.release()
+        abandonFocus()
+    }
+
+    fun resetCameraTracking() {
+        lastVoicedCameraId = null
+        lastVoicedAtMs = 0L
+        lastInitialCameraId = null
+        lastInitialAtMs = 0L
+    }
+
+    fun release() {
+        silence()
+        scoController.forceStop()
         bank.release()
         vibration.release()
-        abandonFocus()
     }
 
     // --------------------------------------------------------------- audio focus
@@ -265,5 +306,6 @@ class MediaAlertEngine(
 
     private companion object {
         const val TAG = "MediaAlertEngine"
+        const val CAMERA_REVOICE_COOLDOWN_MS = 60_000L
     }
 }
