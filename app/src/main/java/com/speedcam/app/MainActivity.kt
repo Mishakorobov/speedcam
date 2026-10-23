@@ -724,6 +724,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshVoicePacks() {
+        val currentVersion = profiles.voicePackVersion
+        if (currentVersion < VoicePackManager.VOICE_PACK_SCHEMA_VERSION) {
+            voicePackManager.ensureBundledPacksInstalled(forceRefresh = true)
+            profiles.voicePackVersion = VoicePackManager.VOICE_PACK_SCHEMA_VERSION
+        }
         val packs = voicePackManager.listInstalledPacks()
         installedVoicePacks = packs.map { it.id to "${it.name} (${it.clipCount})" }
         if (activeVoicePackId.isNullOrBlank() && packs.isNotEmpty()) {

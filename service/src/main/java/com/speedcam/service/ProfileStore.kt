@@ -249,6 +249,11 @@ class ProfileStore(
         get() = prefs.getString(KEY_ACTIVE_VOICE_PACK_ID, "elena_standard")
         set(value) = prefs.edit().putString(KEY_ACTIVE_VOICE_PACK_ID, value).apply()
 
+    /** Version tracking for bundled voice packs to force extraction of new genuine audio recordings. */
+    var voicePackVersion: Int
+        get() = prefs.getInt(KEY_VOICE_PACK_VERSION, 0)
+        set(value) = prefs.edit().putInt(KEY_VOICE_PACK_VERSION, value).apply()
+
     /**
      * The profile detection runs under right now.
      *
@@ -314,6 +319,7 @@ class ProfileStore(
         const val KEY_VOICE_PHRASE_STYLE = "voicePhraseStyle"
         const val KEY_TTS_SPEECH_RATE = "ttsSpeechRate"
         const val KEY_ACTIVE_VOICE_PACK_ID = "activeVoicePackId"
+        const val KEY_VOICE_PACK_VERSION = "voicePackVersion"
         const val DEFAULT_STOP_DELAY_SECONDS = 20
     }
 }

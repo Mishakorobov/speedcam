@@ -48,9 +48,9 @@ class VoicePackManager(
         }
     }
 
-    fun ensureBundledPacksInstalled(): List<VoicePackInfo> {
+    fun ensureBundledPacksInstalled(forceRefresh: Boolean = false): List<VoicePackInfo> {
         val existing = packsDir.listFiles { f -> f.isDirectory && countAudioFiles(f) > 0 }
-        if (existing.isNullOrEmpty()) {
+        if (forceRefresh || existing.isNullOrEmpty()) {
             runCatching {
                 val assetVoiceFiles = context.assets.list("voice") ?: emptyArray()
                 for (zipFile in assetVoiceFiles) {
@@ -253,6 +253,7 @@ class VoicePackManager(
     }
 
     companion object {
+        const val VOICE_PACK_SCHEMA_VERSION = 2
         private const val TAG = "VoicePackManager"
     }
 }
