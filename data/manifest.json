@@ -1,8 +1,8 @@
 {
-  "version": "2026.10.22",
-  "built_at": "2026-10-21T08:16:38.559903400Z",
-  "camera_count": 11426,
+  "version": "2026.10.23",
+  "built_at": "2026-10-23T09:43:34.954251823Z",
+  "camera_count": 11430,
   "section_count": 0,
-  "download_url": "https://github.com/Mishakorobov/speedcam/releases/download/db-2026.10.22/russia.db",
-  "sha256": "73a781aa27c8cfcb7297b79d46050064623808809746625087933909466771d2"
+  "download_url": "https://github.com/Mishakorobov/speedcam/releases/download/db-2026.10.23/russia.db",
+  "sha256": "1eb66e37e983a691846118cc25a4f063e2f16fd821d481cac76d2c408b9d0780"
 }
